@@ -1,8 +1,11 @@
 """Merge raw downloads into per-stock OHLCV files and QuantConnect LEAN daily zips.
 
-For each date the full OHLCV row from a daily archive file is used when one exists;
-otherwise the close/volume history row is used with open = high = low = close
-(the history endpoint has no open/high/low). The ``source`` column records which.
+Sources, highest priority first (the ``source`` column records which one a row came from):
+
+* ``krx``     - KRX Open API full-market files (raw/krx), full OHLCV since 2010
+* ``daily``   - aikstockdata daily archive (raw/daily), full OHLCV, last 30 days only
+* ``history`` - aikstockdata per-stock history (raw/history), close/volume only, so
+                open = high = low = close
 
 Prices are raw KRW closes, NOT split-adjusted. Split/merge dates reported by the
 site are kept in ``raw/history_meta.json`` under ``breaks``.
@@ -11,9 +14,11 @@ site are kept in ``raw/history_meta.json`` under ``breaks``.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import logging
 import os
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -56,10 +61,81 @@ def load_history(path: Path) -> dict[str, Bar]:
     return bars
 
 
-def merge(history: dict[str, Bar], daily: dict[str, Bar]) -> list[tuple[str, Bar]]:
-    merged = dict(history)
-    merged.update(daily)
+def merge(*sources: dict[str, Bar]) -> list[tuple[str, Bar]]:
+    """Merge date -> bar maps; later sources win."""
+    merged: dict[str, Bar] = {}
+    for src in sources:
+        merged.update(src)
     return sorted(merged.items())
+
+
+def _krx_bar(r: dict) -> Bar | None:
+    close = _int(r["TDD_CLSPRC"].replace(",", ""))
+    if not close:
+        return None
+    # KRX reports 0 for open/high/low on days without trades.
+    o, h, l = (_int(r[k].replace(",", "")) or close for k in ("TDD_OPNPRC", "TDD_HGPRC", "TDD_LWPRC"))
+    return (o, h, l, close, _int(r["ACC_TRDVOL"].replace(",", "")) or 0, "krx")
+
+
+def stage_krx(root: Path, stage: Path) -> dict[str, list[str]]:
+    """Regroup raw/krx day files into one CSV per security under ``stage``, a year at a
+    time to bound memory. Returns code -> [name, market, first_date, last_date]."""
+    if stage.exists():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    files: dict[str, list[Path]] = {}
+    for path in (root / "raw" / "krx").glob("*/*/*.csv.gz"):
+        files.setdefault(path.parent.name, []).append(path)
+    meta: dict[str, list[str]] = {}
+    for year in sorted(files):
+        lines: dict[str, list[str]] = {}
+        for path in sorted(files[year], key=lambda p: p.name):
+            market = path.parent.parent.name
+            with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
+                for r in csv.DictReader(f):
+                    bar = _krx_bar(r)
+                    if bar is None:
+                        continue
+                    code, date = r["ISU_CD"], r["BAS_DD"]
+                    lines.setdefault(code, []).append(f"{date},{bar[0]},{bar[1]},{bar[2]},{bar[3]},{bar[4]}\n")
+                    m = meta.setdefault(code, [r["ISU_NM"], r.get("MKT_NM") or market, date, date])
+                    m[2] = min(m[2], date)
+                    if date >= m[3]:
+                        m[0], m[1], m[3] = r["ISU_NM"], r.get("MKT_NM") or market, date
+        for code, ls in lines.items():
+            with open(stage / f"{code}.csv", "a", encoding="utf-8") as f:
+                f.writelines(ls)
+    return meta
+
+
+def load_staged(path: Path) -> dict[str, Bar]:
+    bars: dict[str, Bar] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            d, o, h, l, c, v = line.rstrip("\n").split(",")
+            bars[d] = (int(o), int(h), int(l), int(c), int(v), "krx")
+    return bars
+
+
+def write_securities(root: Path, krx_meta: dict[str, list[str]], codes: list[str]) -> None:
+    """securities.csv: every code in the output, with its KRX listing span when known
+    (last_date before the latest KRX date means delisted or suspended)."""
+    names: dict[str, tuple[str, str]] = {}
+    uni = root / "raw" / "universe.csv"
+    if uni.exists():
+        with open(uni, encoding="utf-8", newline="") as f:
+            names = {r["code"]: (r["name"], r["market"]) for r in csv.DictReader(f)}
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["code", "name", "market", "krx_first_date", "krx_last_date"])
+    for code in codes:
+        if code in krx_meta:
+            w.writerow([code, *krx_meta[code]])
+        else:
+            name, market = names.get(code, ("", ""))
+            w.writerow([code, name, market, "", ""])
+    (root / "securities.csv").write_text(buf.getvalue(), encoding="utf-8")
 
 
 def write_ohlcv_csv(path: Path, bars: list[tuple[str, Bar]]) -> None:
@@ -86,19 +162,24 @@ def write_lean_zip(path: Path, code: str, bars: list[tuple[str, Bar]]) -> None:
 
 def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     daily = load_daily_archive(root)
+    stage = root / ".build" / "krx_staged"
+    krx_meta = stage_krx(root, stage)
     hist_dir = root / "raw" / "history"
-    codes = sorted({p.stem for p in hist_dir.glob("*.csv")} | set(daily))
+    codes = sorted({p.stem for p in hist_dir.glob("*.csv")} | set(daily) | set(krx_meta))
     n = 0
     for code in codes:
-        hpath = hist_dir / f"{code}.csv"
+        hpath, kpath = hist_dir / f"{code}.csv", stage / f"{code}.csv"
         history = load_history(hpath) if hpath.exists() else {}
-        bars = merge(history, daily.get(code, {}))
+        krx = load_staged(kpath) if kpath.exists() else {}
+        bars = merge(history, daily.get(code, {}), krx)
         if not bars:
             continue
         write_ohlcv_csv(root / "ohlcv" / f"{code}.csv", bars)
         if lean:
             write_lean_zip(root / "lean" / "equity" / market / "daily" / f"{code.lower()}.zip", code, bars)
         n += 1
-    log.info("build: wrote %d stocks (%d daily archive file(s) merged)",
-             n, len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
+    write_securities(root, krx_meta, codes)
+    shutil.rmtree(stage.parent, ignore_errors=True)
+    log.info("build: wrote %d securities (%d with KRX data, %d aikstockdata daily file(s))",
+             n, len(krx_meta), len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
     return n

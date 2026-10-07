@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 # Scraped data: the site's license forbids commercial redistribution, so keep it out of git.
 data/
+.build/

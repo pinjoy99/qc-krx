@@ -1,14 +1,46 @@
 # qc-krx
 
-Scrapes Korean equity (KOSPI / KOSDAQ / KONEX) daily price data from
-[aikstockdata.com](https://aikstockdata.com/) and converts it to per-stock OHLCV CSVs
-and QuantConnect LEAN daily zips.
+Collects Korean daily price data (KOSPI / KOSDAQ / KONEX stocks and ETFs) and converts it
+to per-security OHLCV CSVs and QuantConnect LEAN daily zips. Two sources:
 
-The site publishes static JSON/CSV files (no login, no API key — catalog at
-`https://aikstockdata.com/data/public/index.json`), so this downloads those files rather
-than parsing HTML.
+1. **KRX Open API** ([openapi.krx.co.kr](https://openapi.krx.co.kr/)) — official, full-market
+   OHLCV for every date since 2010-01-04, including ETFs and stocks that later delisted.
+   Needs a free API key. **This is the main source once you have a key.**
+2. **[aikstockdata.com](https://aikstockdata.com/)** — no key needed; static JSON/CSV files
+   (catalog at `https://aikstockdata.com/data/public/index.json`). Close/volume since 2020,
+   full OHLCV only for the last 30 trading days. No ETFs, no delisted stocks.
 
-## Data sources used
+## KRX Open API
+
+| Endpoint (`https://data-dbg.krx.co.kr/svc/apis/...`) | Market | Data from |
+|---|---|---|
+| `sto/stk_bydd_trd` | KOSPI | 2010-01-04 |
+| `sto/ksq_bydd_trd` | KOSDAQ | 2010-01-04 |
+| `sto/knx_bydd_trd` | KONEX | 2013-07-01 |
+| `etp/etf_bydd_trd` | ETF | 2010-01-04 |
+
+One call returns every security in that market for one date (`basDd=YYYYMMDD`, key in the
+`AUTH_KEY` header). Setup:
+
+1. Sign up at openapi.krx.co.kr, request an API key (마이페이지 → API 인증키 신청), then apply
+   for each of the four services above (서비스 이용 → 주식 / 증권상품 → API 이용신청). Approval
+   can take a day.
+2. Put the key in the `KRX_API_KEY` environment variable (for Claude Code cloud sessions, add it
+   in the environment's settings; don't commit it).
+3. Backfill, then run daily:
+
+```bash
+python -m qc_krx krx                                 # everything since 2010 (~16k calls)
+python -m qc_krx krx --start 20200101 --markets KOSPI,KOSDAQ
+python -m qc_krx krx --sample --start 20261001       # test without a key (10 rows per call)
+```
+
+Files are stored as `data/raw/krx/{MARKET}/{YYYY}/{YYYYMMDD}.csv.gz` with every API field kept
+as-is. Dates already on disk are skipped; non-trading days are stored as empty files (except
+in the last 7 days, which are retried). The run stops at the first API error — e.g. a daily
+quota or a service you haven't been approved for yet — and a re-run resumes where it stopped.
+
+## aikstockdata.com
 
 | File | Contents | Depth |
 |---|---|---|
@@ -23,7 +55,7 @@ Prices are T+1 confirmed closes (published each trading day around 18:30 KST), r
 
 ```bash
 pip install -r requirements.txt
-python -m qc_krx all          # universe + history + daily archive + build (~5–10 min first run)
+python -m qc_krx all          # aikstockdata + KRX (if KRX_API_KEY is set) + build
 ```
 
 Individual steps:
@@ -32,12 +64,14 @@ Individual steps:
 python -m qc_krx universe                 # data/raw/universe.csv
 python -m qc_krx history 005930 000660    # specific stocks (default: whole universe)
 python -m qc_krx daily                    # new daily OHLCV files not yet on disk
-python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv and data/lean/...
+python -m qc_krx krx                      # KRX Open API (see above)
+python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv, data/lean/..., data/securities.csv
 ```
 
 Re-runs are incremental: unchanged histories are skipped via ETag, and daily files already on
-disk aren't re-downloaded. **Run `daily` every trading day** (after ~18:30 KST) — the site only
-keeps 30 days of OHLCV files, so this is the only way to build up real open/high/low history.
+disk aren't re-downloaded. Without a KRX key, **run `daily` every trading day** (after ~18:30
+KST): the site only keeps 30 days of OHLCV files, so that's the only way to keep real
+open/high/low history from it.
 
 ## Output
 
@@ -46,12 +80,18 @@ data/raw/universe.csv
 data/raw/history/{code}.csv          date,close,volume
 data/raw/history_meta.json           per-code etag, as_of and split/merge "breaks"
 data/raw/daily/quotes_YYYYMMDD.csv   as published
+data/raw/krx/{MARKET}/{YYYY}/{YYYYMMDD}.csv.gz   KRX Open API, one market-day per file
 data/ohlcv/{code}.csv                date,open,high,low,close,volume,source
 data/lean/equity/krx/daily/{code}.zip
+data/securities.csv                  code,name,market,krx_first_date,krx_last_date
 ```
 
-In `data/ohlcv`, `source=daily` rows have real OHLCV; `source=history` rows only have a close,
-so open = high = low = close.
+For each date `data/ohlcv` takes the row from the best source available: `krx`, then `daily`
+(both real OHLCV), then `history` (close only, so open = high = low = close). On no-trade days
+both OHLCV sources report open/high/low as 0; these are replaced by the close.
+
+In `securities.csv`, a `krx_last_date` earlier than the latest KRX date means the security
+delisted (or was suspended) — use it to keep backtests free of survivorship bias.
 
 The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000).
 Map and factor files are **not** generated, and `krx` is not a built-in LEAN market, so
