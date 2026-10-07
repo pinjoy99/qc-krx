@@ -18,6 +18,7 @@ import gzip
 import io
 import logging
 import os
+import time
 from pathlib import Path
 
 from qc_krx.client import Client
@@ -67,13 +68,20 @@ class KrxClient(Client):
         self.session.headers["AUTH_KEY"] = auth_key
 
     def get_day(self, market: str, date: str, endpoints: dict[str, str] = ENDPOINTS) -> list[dict]:
-        self._throttle()
-        resp = self.session.get(f"{self.base_url}/{endpoints[market]}", params={"basDd": date}, timeout=self.timeout)
-        try:
-            data = resp.json()
-        except ValueError:
-            resp.raise_for_status()
-            raise KrxApiError(f"{market} {date}: non-JSON response (HTTP {resp.status_code})")
+        # KRX occasionally answers 200 with a non-JSON (error page) body; retry those.
+        for attempt in range(4):
+            self._throttle()
+            resp = self.session.get(f"{self.base_url}/{endpoints[market]}", params={"basDd": date}, timeout=self.timeout)
+            try:
+                data = resp.json()
+                break
+            except ValueError:
+                resp.raise_for_status()
+                if attempt == 3:
+                    raise KrxApiError(f"{market} {date}: non-JSON response (HTTP {resp.status_code}): "
+                                      f"{resp.text[:200]!r}")
+                log.warning("%s %s: non-JSON response, retrying", market, date)
+                time.sleep(2 ** (attempt + 1))
         if "OutBlock_1" not in data:
             raise KrxApiError(f"{market} {date}: {data.get('respCode')} {data.get('respMsg')}")
         return data["OutBlock_1"]
