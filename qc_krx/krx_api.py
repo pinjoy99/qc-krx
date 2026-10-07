@@ -36,6 +36,20 @@ ENDPOINTS = {
     "KONEX": "sto/knx_bydd_trd",
     "ETF": "etp/etf_bydd_trd",
 }
+# Security master data (ISIN, listing date, share class, par value, ...) per market.
+INFO_ENDPOINTS = {
+    "KOSPI": "sto/stk_isu_base_info",
+    "KOSDAQ": "sto/ksq_isu_base_info",
+    "KONEX": "sto/knx_isu_base_info",
+}
+# Index series (each call returns every index in the series for one date).
+INDEX_ENDPOINTS = {
+    "KRX": "idx/krx_dd_trd",
+    "KOSPI": "idx/kospi_dd_trd",
+    "KOSDAQ": "idx/kosdaq_dd_trd",
+}
+# raw/ subdirectory and endpoints for each dataset fetched one day per call.
+DATASETS = {"price": ("krx", ENDPOINTS), "index": ("krx_index", INDEX_ENDPOINTS)}
 FIRST_DATE = {"KOSPI": "20100104", "KOSDAQ": "20100104", "KONEX": "20130701", "ETF": "20100104"}
 
 KST = dt.timezone(dt.timedelta(hours=9))
@@ -52,9 +66,9 @@ class KrxClient(Client):
         super().__init__(base_url=SAMPLE_URL if sample else API_URL, min_interval=min_interval)
         self.session.headers["AUTH_KEY"] = auth_key
 
-    def get_day(self, market: str, date: str) -> list[dict]:
+    def get_day(self, market: str, date: str, endpoints: dict[str, str] = ENDPOINTS) -> list[dict]:
         self._throttle()
-        resp = self.session.get(f"{self.base_url}/{ENDPOINTS[market]}", params={"basDd": date}, timeout=self.timeout)
+        resp = self.session.get(f"{self.base_url}/{endpoints[market]}", params={"basDd": date}, timeout=self.timeout)
         try:
             data = resp.json()
         except ValueError:
@@ -74,8 +88,8 @@ def client_from_env(sample: bool = False, min_interval: float = 0.2) -> KrxClien
     return KrxClient(key, min_interval=min_interval)
 
 
-def day_path(root: Path, market: str, date: str) -> Path:
-    return root / "raw" / "krx" / market / date[:4] / f"{date}.csv.gz"
+def day_path(root: Path, market: str, date: str, subdir: str = "krx") -> Path:
+    return root / "raw" / subdir / market / date[:4] / f"{date}.csv.gz"
 
 
 def write_day(path: Path, rows: list[dict]) -> None:
@@ -106,8 +120,9 @@ def weekdays(start: str, end: str):
 
 
 def scrape_krx(client: KrxClient, root: Path, start: str | None = None, end: str | None = None,
-               markets: list[str] | None = None, force: bool = False) -> dict:
-    """Fetch every (market, weekday) in [start, end] not already on disk.
+               markets: list[str] | None = None, force: bool = False, dataset: str = "price") -> dict:
+    """Fetch every (market, weekday) in [start, end] not already on disk. ``dataset`` is
+    "price" (``markets`` from ENDPOINTS) or "index" (series from INDEX_ENDPOINTS).
 
     Stops at the first API error (e.g. an exhausted daily quota or an unapproved
     service) so a re-run resumes where it left off.
@@ -115,15 +130,17 @@ def scrape_krx(client: KrxClient, root: Path, start: str | None = None, end: str
     today = dt.datetime.now(KST).date()
     end = end or today.strftime("%Y%m%d")
     recent = (today - dt.timedelta(days=RECENT_DAYS)).strftime("%Y%m%d")
+    subdir, endpoints = DATASETS[dataset]
     stats = {"fetched": 0, "empty": 0, "skipped": 0, "rows": 0}
-    for market in markets or list(ENDPOINTS):
-        first = max(start or FIRST_DATE[market], FIRST_DATE[market])
+    for market in markets or list(endpoints):
+        floor = FIRST_DATE.get(market, "20100104") if dataset == "price" else "20100104"
+        first = max(start or floor, floor)
         for date in weekdays(first, end):
-            path = day_path(root, market, date)
+            path = day_path(root, market, date, subdir)
             if path.exists() and not force:
                 stats["skipped"] += 1
                 continue
-            rows = client.get_day(market, date)
+            rows = client.get_day(market, date, endpoints)
             if rows or date < recent:
                 write_day(path, rows)
             stats["fetched"] += 1
@@ -131,6 +148,32 @@ def scrape_krx(client: KrxClient, root: Path, start: str | None = None, end: str
             if not rows:
                 stats["empty"] += 1
             if stats["fetched"] % 100 == 0:
-                log.info("krx: %s %s (%s)", market, date, stats)
-    log.info("krx: %s", stats)
+                log.info("%s: %s %s (%s)", subdir, market, date, stats)
+    log.info("%s: %s", subdir, stats)
     return stats
+
+
+def info_path(root: Path, market: str, date: str) -> Path:
+    return root / "raw" / "krx_info" / market / f"{date}.csv.gz"
+
+
+def scrape_krx_info(client: KrxClient, root: Path, date: str | None = None,
+                    markets: list[str] | None = None) -> dict[str, str]:
+    """Save one security-master snapshot per market. Without ``date``, walks back from
+    today to the most recent date that has data. Returns market -> snapshot date."""
+    today = dt.datetime.now(KST).date()
+    saved = {}
+    for market in markets or list(INFO_ENDPOINTS):
+        candidates = [date] if date else [(today - dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(10)]
+        for d in candidates:
+            if dt.datetime.strptime(d, "%Y%m%d").weekday() >= 5:
+                continue
+            rows = client.get_day(market, d, INFO_ENDPOINTS)
+            if rows:
+                write_day(info_path(root, market, d), rows)
+                saved[market] = d
+                log.info("krx-info: %s %s: %d securities", market, d, len(rows))
+                break
+        else:
+            log.warning("krx-info: no %s data found", market)
+    return saved

@@ -36,6 +36,16 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--sample", action="store_true",
                    help="use KRX's public sample endpoint (10 rows per call, no key needed) to test the pipeline")
 
+    x = sub.add_parser("krx-index", help="download daily index levels from the KRX Open API (needs KRX_API_KEY)")
+    x.add_argument("--start", help="first date YYYYMMDD (default: 20100104)")
+    x.add_argument("--end", help="last date YYYYMMDD (default: today KST)")
+    x.add_argument("--series", default=",".join(krx_api.INDEX_ENDPOINTS), help="comma-separated subset of %(default)s")
+    x.add_argument("--force", action="store_true", help="re-download dates already on disk")
+
+    i = sub.add_parser("krx-info", help="save a KRX security-master snapshot (ISIN, listing date, share class, par value)")
+    i.add_argument("--date", help="YYYYMMDD (default: most recent date with data)")
+    i.add_argument("--markets", default=",".join(krx_api.INFO_ENDPOINTS), help="comma-separated subset of %(default)s")
+
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
     b.add_argument("--market", default="krx", help="LEAN market folder name (default: krx)")
@@ -69,6 +79,29 @@ def main(argv: list[str] | None = None) -> int:
             krx_api.scrape_krx(kc, root, start=args.start, end=args.end, markets=markets, force=args.force)
         except krx_api.KrxApiError as e:
             logging.error("KRX API error, stopping (re-run to resume): %s", e)
+            return 1
+    elif args.cmd == "krx-index":
+        series = [m.strip().upper() for m in args.series.split(",") if m.strip()]
+        unknown = set(series) - set(krx_api.INDEX_ENDPOINTS)
+        if unknown:
+            p.error(f"unknown series: {', '.join(sorted(unknown))}")
+        kc = krx_api.client_from_env(min_interval=max(args.interval, 0.2))
+        try:
+            krx_api.scrape_krx(kc, root, start=args.start, end=args.end, markets=series,
+                               force=args.force, dataset="index")
+        except krx_api.KrxApiError as e:
+            logging.error("KRX API error, stopping (re-run to resume): %s", e)
+            return 1
+    elif args.cmd == "krx-info":
+        markets = [m.strip().upper() for m in args.markets.split(",") if m.strip()]
+        unknown = set(markets) - set(krx_api.INFO_ENDPOINTS)
+        if unknown:
+            p.error(f"unknown market(s): {', '.join(sorted(unknown))}")
+        kc = krx_api.client_from_env(min_interval=max(args.interval, 0.2))
+        try:
+            krx_api.scrape_krx_info(kc, root, date=args.date, markets=markets)
+        except krx_api.KrxApiError as e:
+            logging.error("KRX API error: %s", e)
             return 1
     elif args.cmd == "build":
         build.build(root, lean=not args.no_lean, market=args.market)

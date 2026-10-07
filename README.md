@@ -35,6 +35,14 @@ python -m qc_krx krx --start 20200101 --markets KOSPI,KOSDAQ
 python -m qc_krx krx --sample --start 20261001       # test without a key (10 rows per call)
 ```
 
+Two more KRX datasets (each needs its own service approval):
+
+```bash
+python -m qc_krx krx-index --series KOSPI     # index levels: KRX, KOSPI, KOSDAQ series (since 2010)
+python -m qc_krx krx-info --markets KOSPI     # security master snapshot: ISIN, listing date,
+                                              # share class (common/preferred), par value, REIT etc.
+```
+
 Files are stored as `data/raw/krx/{MARKET}/{YYYY}/{YYYYMMDD}.csv.gz` with every API field kept
 as-is. Dates already on disk are skipped; non-trading days are stored as empty files (except
 in the last 7 days, which are retried). The run stops at the first API error — e.g. a daily
@@ -83,8 +91,18 @@ data/raw/daily/quotes_YYYYMMDD.csv   as published
 data/raw/krx/{MARKET}/{YYYY}/{YYYYMMDD}.csv.gz   KRX Open API, one market-day per file
 data/ohlcv/{code}.csv                date,open,high,low,close,volume,source
 data/lean/equity/krx/daily/{code}.zip
-data/securities.csv                  code,name,market,krx_first_date,krx_last_date
+data/raw/krx_index/{SERIES}/{YYYY}/{YYYYMMDD}.csv.gz
+data/raw/krx_info/{MARKET}/{YYYYMMDD}.csv.gz
+data/securities.csv                  code,name,market,krx_first_date,krx_last_date,
+                                     isin,name_en,listing_date,security_group,share_class,par_value
+data/index/{name}.csv                date,open,high,low,close,volume,value,market_cap
+data/indices.csv                     file,series,name,first_date,last_date
 ```
+
+Main indices get short file names (`KOSPI`, `KOSPI200`, `KOSDAQ`, `KOSDAQ150`, `KRX300`); the
+rest are `{SERIES}_{Korean name}`. The security-master columns in `securities.csv` come from the
+latest `krx-info` snapshot and are blank for codes not in it (e.g. delisted ones). A change in
+`par_value` between snapshots marks a stock split or reverse split.
 
 For each date `data/ohlcv` takes the row from the best source available: `krx`, then `daily`
 (both real OHLCV), then `history` (close only, so open = high = low = close). On no-trade days

@@ -18,6 +18,7 @@ import gzip
 import io
 import logging
 import os
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -118,9 +119,30 @@ def load_staged(path: Path) -> dict[str, Bar]:
     return bars
 
 
+# KRX security-master fields copied into securities.csv: output column -> API field.
+INFO_FIELDS = {
+    "isin": "ISU_CD", "name_en": "ISU_ENG_NM", "listing_date": "LIST_DD",
+    "security_group": "SECUGRP_NM", "share_class": "KIND_STKCERT_TP_NM", "par_value": "PARVAL",
+}
+
+
+def load_latest_info(root: Path) -> dict[str, dict]:
+    """code -> row from the newest raw/krx_info snapshot of each market."""
+    info: dict[str, dict] = {}
+    for market_dir in sorted((root / "raw" / "krx_info").glob("*")):
+        snapshots = sorted(market_dir.glob("*.csv.gz"))
+        if snapshots:
+            with gzip.open(snapshots[-1], "rt", encoding="utf-8", newline="") as f:
+                for r in csv.DictReader(f):
+                    info[r["ISU_SRT_CD"]] = r
+    return info
+
+
 def write_securities(root: Path, krx_meta: dict[str, list[str]], codes: list[str]) -> None:
     """securities.csv: every code in the output, with its KRX listing span when known
-    (last_date before the latest KRX date means delisted or suspended)."""
+    (last_date before the latest KRX date means delisted or suspended), plus security
+    master fields from the latest `krx-info` snapshot (blank for codes not in it)."""
+    info = load_latest_info(root)
     names: dict[str, tuple[str, str]] = {}
     uni = root / "raw" / "universe.csv"
     if uni.exists():
@@ -128,13 +150,14 @@ def write_securities(root: Path, krx_meta: dict[str, list[str]], codes: list[str
             names = {r["code"]: (r["name"], r["market"]) for r in csv.DictReader(f)}
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["code", "name", "market", "krx_first_date", "krx_last_date"])
+    w.writerow(["code", "name", "market", "krx_first_date", "krx_last_date", *INFO_FIELDS])
     for code in codes:
+        extra = [info.get(code, {}).get(k, "") for k in INFO_FIELDS.values()]
         if code in krx_meta:
-            w.writerow([code, *krx_meta[code]])
+            w.writerow([code, *krx_meta[code], *extra])
         else:
             name, market = names.get(code, ("", ""))
-            w.writerow([code, name, market, "", ""])
+            w.writerow([code, name, market, "", "", *extra])
     (root / "securities.csv").write_text(buf.getvalue(), encoding="utf-8")
 
 
@@ -160,6 +183,48 @@ def write_lean_zip(path: Path, code: str, bars: list[tuple[str, Bar]]) -> None:
     os.replace(tmp, path)
 
 
+# Short file names for the main indices; others become {SERIES}_{name}.
+INDEX_ALIASES = {"코스피": "KOSPI", "코스피 200": "KOSPI200", "코스닥": "KOSDAQ",
+                 "코스닥 150": "KOSDAQ150", "KRX 300": "KRX300"}
+
+
+def index_file_name(series: str, name: str) -> str:
+    if name in INDEX_ALIASES:
+        return INDEX_ALIASES[name]
+    return f"{series}_" + re.sub(r"[^0-9A-Za-z가-힣]+", "_", name).strip("_")
+
+
+def build_indices(root: Path) -> int:
+    """data/index/{name}.csv per index (date,open,high,low,close,volume,value,market_cap)
+    and data/indices.csv listing them. Index levels are kept exactly as KRX reports them."""
+    series_rows: dict[tuple[str, str], list[str]] = {}
+    for path in sorted((root / "raw" / "krx_index").glob("*/*/*.csv.gz"), key=lambda p: p.name):
+        series = path.parent.parent.name
+        with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
+            for r in csv.DictReader(f):
+                c = r["CLSPRC_IDX"]
+                if not c or c == "-":
+                    continue
+                o, h, l = (r[k] if r[k] and r[k] != "-" else c for k in ("OPNPRC_IDX", "HGPRC_IDX", "LWPRC_IDX"))
+                series_rows.setdefault((series, r["IDX_NM"]), []).append(
+                    f"{r['BAS_DD']},{o},{h},{l},{c},{r['ACC_TRDVOL']},{r['ACC_TRDVAL']},{r['MKTCAP']}\n")
+    if not series_rows:
+        return 0
+    out = root / "index"
+    out.mkdir(parents=True, exist_ok=True)
+    catalog = io.StringIO()
+    w = csv.writer(catalog, lineterminator="\n")
+    w.writerow(["file", "series", "name", "first_date", "last_date"])
+    for (series, name), lines in sorted(series_rows.items()):
+        lines.sort()
+        fname = index_file_name(series, name)
+        (out / f"{fname}.csv").write_text("date,open,high,low,close,volume,value,market_cap\n" + "".join(lines),
+                                          encoding="utf-8")
+        w.writerow([f"index/{fname}.csv", series, name, lines[0][:8], lines[-1][:8]])
+    (root / "indices.csv").write_text(catalog.getvalue(), encoding="utf-8")
+    return len(series_rows)
+
+
 def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     daily = load_daily_archive(root)
     stage = root / ".build" / "krx_staged"
@@ -180,6 +245,9 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
         n += 1
     write_securities(root, krx_meta, codes)
     shutil.rmtree(stage.parent, ignore_errors=True)
+    n_idx = build_indices(root)
+    if n_idx:
+        log.info("build: wrote %d indices", n_idx)
     log.info("build: wrote %d securities (%d with KRX data, %d aikstockdata daily file(s))",
              n, len(krx_meta), len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
     return n

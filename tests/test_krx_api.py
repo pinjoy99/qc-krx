@@ -26,7 +26,7 @@ class FakeClient:
         self.data = data  # (market, date) -> rows
         self.calls = []
 
-    def get_day(self, market, date):
+    def get_day(self, market, date, endpoints=krx_api.ENDPOINTS):
         self.calls.append((market, date))
         return self.data.get((market, date), [])
 
@@ -90,6 +90,37 @@ class KrxApiTest(unittest.TestCase):
         sec = (self.root / "securities.csv").read_text(encoding="utf-8")
         self.assertIn("900100,뉴프라이드,KOSDAQ,20200414,20200414", sec)
         self.assertFalse((self.root / ".build").exists())
+
+    def test_indices_and_security_info(self):
+        index_rows = [
+            {"BAS_DD": "20261006", "IDX_CLSS": "KOSPI", "IDX_NM": "코스피 (외국주포함)", "CLSPRC_IDX": "",
+             "OPNPRC_IDX": "", "HGPRC_IDX": "", "LWPRC_IDX": "", "ACC_TRDVOL": "1", "ACC_TRDVAL": "1", "MKTCAP": "1"},
+            {"BAS_DD": "20261006", "IDX_CLSS": "KOSPI", "IDX_NM": "코스피", "CLSPRC_IDX": "6941.39",
+             "OPNPRC_IDX": "7044.67", "HGPRC_IDX": "7044.67", "LWPRC_IDX": "6897.38",
+             "ACC_TRDVOL": "269406569", "ACC_TRDVAL": "20077224633617", "MKTCAP": "5722775392085816"},
+            {"BAS_DD": "20261006", "IDX_CLSS": "KOSPI", "IDX_NM": "코스피 200 철강/소재", "CLSPRC_IDX": "1000.5",
+             "OPNPRC_IDX": "-", "HGPRC_IDX": "-", "LWPRC_IDX": "-", "ACC_TRDVOL": "0", "ACC_TRDVAL": "0", "MKTCAP": "0"},
+        ]
+        client = FakeClient({("KOSPI", "20261006"): index_rows})
+        krx_api.scrape_krx(client, self.root, start="20261006", end="20261006", markets=["KOSPI"], dataset="index")
+        self.assertTrue(krx_api.day_path(self.root, "KOSPI", "20261006", "krx_index").exists())
+
+        krx_api.write_day(krx_api.info_path(self.root, "KOSDAQ", "20200414"), [{
+            "ISU_CD": "KR7900100000", "ISU_SRT_CD": "900100", "ISU_NM": "x", "ISU_ABBRV": "x", "ISU_ENG_NM": "New Pride",
+            "LIST_DD": "20100101", "MKT_TP_NM": "KOSDAQ", "SECUGRP_NM": "외국주권", "SECT_TP_NM": "",
+            "KIND_STKCERT_TP_NM": "보통주", "PARVAL": "500", "LIST_SHRS": "1"}])
+        krx_api.write_day(krx_api.day_path(self.root, "KOSDAQ", "20200414"), KOSDAQ_ROWS)
+        build.build(self.root)
+
+        self.assertEqual((self.root / "index" / "KOSPI.csv").read_text(encoding="utf-8").splitlines()[1],
+                         "20261006,7044.67,7044.67,6897.38,6941.39,269406569,20077224633617,5722775392085816")
+        self.assertIn("20261006,1000.5,1000.5,1000.5,1000.5,",
+                      (self.root / "index" / "KOSPI_코스피_200_철강_소재.csv").read_text(encoding="utf-8"))
+        catalog = (self.root / "indices.csv").read_text(encoding="utf-8")
+        self.assertNotIn("외국주포함", catalog)  # no levels reported -> no file
+        sec = (self.root / "securities.csv").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(sec[0].endswith("isin,name_en,listing_date,security_group,share_class,par_value"))
+        self.assertIn("900100,뉴프라이드,KOSDAQ,20200414,20200414,KR7900100000,New Pride,20100101,외국주권,보통주,500", sec)
 
 
 if __name__ == "__main__":
