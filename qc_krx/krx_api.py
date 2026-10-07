@@ -90,7 +90,8 @@ class KrxClient(Client):
 def client_from_env(sample: bool = False, min_interval: float = 0.2) -> KrxClient:
     if sample:
         return KrxClient(SAMPLE_AUTH_KEY, sample=True, min_interval=min_interval)
-    key = os.environ.get("KRX_API_KEY")
+    # Strip whitespace: a key pasted into a secrets UI often carries a trailing newline.
+    key = os.environ.get("KRX_API_KEY", "").strip()
     if not key:
         raise SystemExit("KRX_API_KEY is not set (get a key at https://openapi.krx.co.kr/)")
     return KrxClient(key, min_interval=min_interval)
