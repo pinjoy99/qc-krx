@@ -115,6 +115,14 @@ The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices
 Map and factor files are **not** generated, and `krx` is not a built-in LEAN market, so
 register the market (`Market.add("krx", <id>)`) or load the CSVs as custom data.
 
+## Google Colab → Google Drive
+
+`notebooks/qc_krx_colab.ipynb` runs the scraper in Colab and keeps the data in your Google Drive
+(`MyDrive/qc-krx-data/`): raw downloads accumulate there between runs, and each run writes
+`securities.csv`, `index/`, zipped per-security outputs and one combined CSV per year
+(`combined/prices_YYYY.csv`, handy for Gemini). It needs two Colab secrets, `GITHUB_TOKEN`
+(read-only access to this repo) and `KRX_API_KEY`; the steps are in the notebook.
+
 ## License of the data
 
 The site permits non-commercial use with attribution and forbids commercial redistribution
