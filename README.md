@@ -119,6 +119,7 @@ python -m qc_krx history 005930 000660    # specific stocks (default: whole univ
 python -m qc_krx daily                    # new daily OHLCV files not yet on disk
 python -m qc_krx krx                      # KRX Open API (see above)
 python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv, data/lean/..., data/securities.csv
+python -m qc_krx lean-install PATH        # copy into a LEAN Data folder (see "Using the data in LEAN")
 ```
 
 Re-runs are incremental: unchanged histories are skipped via ETag, and daily files already on
@@ -164,7 +165,33 @@ In `securities.csv`, a `krx_last_date` earlier than the latest KRX date means th
 delisted (or was suspended) — use it to keep backtests free of survivorship bias.
 
 The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000, raw
-unadjusted). `krx` is not a built-in LEAN market, so register it (`Market.add("krx", <id>)`).
+unadjusted).
+
+### Using the data in LEAN
+
+LEAN already has a `krx` market (`Market.KRX`, id 43) for KOSPI 200 futures/indices, but no
+equity config for it. `lean-install` copies `lean/equity/krx` into a LEAN `Data/` folder and adds
+an `Equity-krx-[*]` market-hours entry (Asia/Seoul, 09:00-15:30; holidays from LEAN's own
+`Index-krx-[*]` list plus every no-trade weekday in the data) and the symbol-properties line
+`krx,[*],equity,,KRW,1,1,1`. Re-running it is safe.
+
+```bash
+python -m qc_krx lean-install /path/to/Lean/Data
+```
+
+In the algorithm: `SetTimeZone("Asia/Seoul")`, `SetAccountCurrency("KRW")`,
+`AddEquity("005930", Resolution.Daily, Market.KRX)`, and a fee model — LEAN's default
+(Interactive Brokers) fee model has no KRX equity schedule and throws `unexpected equity Market
+krx` on the first order. [`examples/KrxSmokeTest.cs`](examples/KrxSmokeTest.cs) uses a zero-fee
+model; a real KRX model (commission + sell-side transaction tax) is still to do.
+
+Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
+`examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04
+(raw close 2,650,000 -> 51,900; adjusted 43,071 -> 42,177, the real -2.1% move), its quarterly
+354-won dividends, and Woori Bank (000030) delisting on 2019-02-12 with the position closed.
+LEAN's KRX holiday list contained all 248 no-trade weekdays in the data. This works with LEAN on
+your own machine (source build or `lean` CLI); QuantConnect's cloud can't read a custom data
+folder.
 
 ### Factor and map files
 

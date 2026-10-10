@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-from qc_krx import build, dividends, krx_api, rights, scraper
+from qc_krx import build, dividends, krx_api, lean_install, rights, scraper
 from qc_krx.client import Client
 
 
@@ -56,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
     b.add_argument("--market", default="krx", help="LEAN market folder name (default: krx)")
+
+    li = sub.add_parser("lean-install", help="copy lean/equity/krx into a LEAN Data folder and add KRX equity config")
+    li.add_argument("lean_data", type=Path, help="path to LEAN's Data folder")
+    li.add_argument("--market", default="krx")
 
     a = sub.add_parser("all", help="universe + history + daily (+ krx if KRX_API_KEY is set) + build")
     a.add_argument("--workers", type=int, default=4)
@@ -124,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     elif args.cmd == "build":
         build.build(root, lean=not args.no_lean, market=args.market)
+    elif args.cmd == "lean-install":
+        lean_install.install(root, args.lean_data, market=args.market)
     elif args.cmd == "all":
         codes = [c for c, _, _ in scraper.fetch_universe(client, root)]
         stats = scraper.scrape_histories(client, codes, root, workers=args.workers)
