@@ -1,5 +1,8 @@
 # qc-krx
 
+**Documentation:** [step-by-step guide](docs/GUIDE.md) (install → data → LEAN backtest) ·
+[audit record](docs/AUDIT.md) (sources, rules, verification, decisions) · [to-do list](TODO.md)
+
 Collects Korean daily price data (KOSPI / KOSDAQ / KONEX stocks and ETFs) and converts it
 to per-security OHLCV CSVs and QuantConnect LEAN daily zips. Two sources:
 
