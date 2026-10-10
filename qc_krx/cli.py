@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-from qc_krx import build, krx_api, scraper
+from qc_krx import build, dividends, krx_api, scraper
 from qc_krx.client import Client
 
 
@@ -45,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     i = sub.add_parser("krx-info", help="save a KRX security-master snapshot (ISIN, listing date, share class, par value)")
     i.add_argument("--date", help="YYYYMMDD (default: most recent date with data)")
     i.add_argument("--markets", default=",".join(krx_api.INFO_ENDPOINTS), help="comma-separated subset of %(default)s")
+
+    sub.add_parser("dividends", help="download dividend history from data.go.kr (needs DATA_GO_KR_KEY)")
 
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
@@ -102,6 +104,12 @@ def main(argv: list[str] | None = None) -> int:
             krx_api.scrape_krx_info(kc, root, date=args.date, markets=markets)
         except krx_api.KrxApiError as e:
             logging.error("KRX API error: %s", e)
+            return 1
+    elif args.cmd == "dividends":
+        try:
+            dividends.scrape_dividends(dividends.key_from_env(), root)
+        except dividends.DividendApiError as e:
+            logging.error("dividend API error: %s", e)
             return 1
     elif args.cmd == "build":
         build.build(root, lean=not args.no_lean, market=args.market)

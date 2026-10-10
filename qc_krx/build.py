@@ -23,6 +23,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from qc_krx.dividends import build_dividends
+
 log = logging.getLogger(__name__)
 
 Bar = tuple[int, int, int, int, int, str]  # open, high, low, close, volume, source
@@ -248,6 +250,9 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     n_idx = build_indices(root)
     if n_idx:
         log.info("build: wrote %d indices", n_idx)
+    n_div = build_dividends(root)
+    if n_div:
+        log.info("build: wrote %d dividend records", n_div)
     log.info("build: wrote %d securities (%d with KRX data, %d aikstockdata daily file(s))",
              n, len(krx_meta), len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
     return n

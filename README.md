@@ -48,6 +48,25 @@ as-is. Dates already on disk are skipped; non-trading days are stored as empty f
 in the last 7 days, which are retried). The run stops at the first API error — e.g. a daily
 quota or a service you haven't been approved for yet — and a re-run resumes where it stopped.
 
+## Dividends (data.go.kr)
+
+The FSC dividend API ([금융위원회_주식배당정보](https://www.data.go.kr/data/15043284/openapi.do),
+`apis.data.go.kr/1160100/GetStocDiviInfoService_V2/getDiviInfo_V2`) returns every dividend of
+listed companies since the 1980s (~72k records) as one table. Put your data.go.kr service key
+(the **Decoding** one) in `DATA_GO_KR_KEY`, then:
+
+```bash
+python -m qc_krx dividends     # full table, 8 calls -> data/raw/dividends/{basDt}.csv.gz
+python -m qc_krx build         # also writes data/dividends.csv
+```
+
+`dividends.csv` has one row per security per dividend (`type` = cash, stock or cash_and_stock;
+no-dividend records are dropped) with `record_date`, `pay_date` and `cash_per_share`.
+`cash_per_share` is the reported amount only: the API's par value is today's par, so rate x par is
+wrong for records before a split, and about 10-15% of cash dividends each year come with a rate
+but no amount (blank here; `cash_rate_pct` and `par_value_current` are kept for reference).
+Announced dividends whose amount isn't set yet also have a blank amount.
+
 ## aikstockdata.com
 
 | File | Contents | Depth |
@@ -97,6 +116,8 @@ data/securities.csv                  code,name,market,krx_first_date,krx_last_da
                                      isin,name_en,listing_date,security_group,share_class,par_value
 data/index/{name}.csv                date,open,high,low,close,volume,value,market_cap
 data/indices.csv                     file,series,name,first_date,last_date
+data/raw/dividends/{basDt}.csv.gz    latest dividend table snapshot (all API fields)
+data/dividends.csv                   code,isin,name,share_class,...,record_date,pay_date,type,cash_per_share,...
 ```
 
 Main indices get short file names (`KOSPI`, `KOSPI200`, `KOSDAQ`, `KOSDAQ150`, `KRX300`); the
