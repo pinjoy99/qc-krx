@@ -29,6 +29,7 @@ import requests
 
 from qc_krx.client import USER_AGENT
 from qc_krx.dividends import DividendApiError as RightsApiError  # same gateway, same errors
+from qc_krx.dividends import recent_snapshot
 from qc_krx.krx_api import KST, read_day, write_day
 
 log = logging.getLogger(__name__)
@@ -79,8 +80,14 @@ def _items(body: dict) -> list[dict]:
     return [items] if isinstance(items, dict) else items
 
 
-def scrape_rights(key: str, root: Path) -> Path:
+def scrape_rights(key: str, root: Path, max_age_days: float = 7) -> Path:
+    """Skipped when the saved snapshot is younger than ``max_age_days`` (0 = always download):
+    the full table takes ~126 calls and changes slowly."""
     out_dir = root / "raw" / "rights"
+    fresh = recent_snapshot(out_dir, max_age_days)
+    if fresh and not (out_dir / ".partial").exists():
+        log.info("rights: %s is less than %g day(s) old, skipping (use --force to refresh)", fresh.name, max_age_days)
+        return fresh
     partial = out_dir / ".partial"
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT

@@ -49,10 +49,17 @@ class DividendsTest(unittest.TestCase):
         bodies = [{"items": {"item": [row(), row(dvdnBasDt="20250630")]}, "totalCount": 3},
                   {"items": {"item": row(dvdnBasDt="20240630")}, "totalCount": 3}]  # single row = object
         with mock.patch.object(dividends, "fetch_page", side_effect=lambda s, k, p: bodies[p - 1]):
-            path = dividends.scrape_dividends("key", self.root)
+            path = dividends.scrape_dividends("key", self.root, max_age_days=0)
         self.assertEqual(path.name, "20261009.csv.gz")
         self.assertFalse(old.exists())
         self.assertEqual(dividends.build_dividends(self.root), 3)
+
+    def test_recent_snapshot_skips_download(self):
+        write_day(self.root / "raw" / "dividends" / "20261009.csv.gz", [row()])
+        with mock.patch.object(dividends, "fetch_all", side_effect=AssertionError("should not download")):
+            self.assertEqual(dividends.scrape_dividends("key", self.root).name, "20261009.csv.gz")
+        with mock.patch.object(dividends, "fetch_all", return_value=[row(basDt="20261010")]):
+            self.assertEqual(dividends.scrape_dividends("key", self.root, max_age_days=0).name, "20261010.csv.gz")
 
     def test_gateway_error_is_reported(self):
         resp = mock.Mock()

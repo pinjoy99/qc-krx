@@ -41,6 +41,14 @@ class DividendApiError(Exception):
     pass
 
 
+def recent_snapshot(out_dir: Path, max_age_days: float) -> Path | None:
+    """The newest snapshot in ``out_dir`` if it was saved less than ``max_age_days`` ago."""
+    snaps = sorted(out_dir.glob("*.csv.gz"))
+    if snaps and max_age_days > 0 and time.time() - snaps[-1].stat().st_mtime < max_age_days * 86400:
+        return snaps[-1]
+    return None
+
+
 def key_from_env() -> str:
     key = os.environ.get("DATA_GO_KR_KEY", "").strip()
     if not key:
@@ -89,8 +97,13 @@ def fetch_all(key: str) -> list[dict]:
         page += 1
 
 
-def scrape_dividends(key: str, root: Path) -> Path:
-    """Download the full table and keep it as the only snapshot under raw/dividends/."""
+def scrape_dividends(key: str, root: Path, max_age_days: float = 1) -> Path:
+    """Download the full table and keep it as the only snapshot under raw/dividends/.
+    Skipped when the saved snapshot is younger than ``max_age_days`` (0 = always download)."""
+    fresh = recent_snapshot(root / "raw" / "dividends", max_age_days)
+    if fresh:
+        log.info("dividends: %s is less than %g day(s) old, skipping (use --force to refresh)", fresh.name, max_age_days)
+        return fresh
     rows = fetch_all(key)
     if not rows:
         raise DividendApiError("empty dividend table")

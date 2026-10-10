@@ -57,6 +57,7 @@ listed companies since the 1980s (~72k records) as one table. Put your data.go.k
 
 ```bash
 python -m qc_krx dividends     # full table, 8 calls -> data/raw/dividends/{basDt}.csv.gz
+                               # (skipped if the saved copy is <1 day old; --force to refresh)
 python -m qc_krx build         # also writes data/dividends.csv
 ```
 
@@ -76,10 +77,12 @@ bonus/rights issues, capital reductions, mergers, spin-offs, name changes, divid
 
 ```bash
 python -m qc_krx rights        # whole table, ~126 calls (15-25 min); an interrupted run resumes
+                               # (skipped if the saved copy is <7 days old; --force to refresh)
 python -m qc_krx build         # also writes data/corporate_actions.csv
 ```
 
-The API ignores date-range filters, so every run fetches the full table. It has no stock code,
+The API ignores date-range filters, so a refresh fetches the full table; that's why it's only
+refreshed weekly by default. Factor files don't need it (they use KRX base prices and dividends). It has no stock code,
 only the company registration number (`crno`), which is mapped to the common share's code
 through the dividend table (run `dividends` first); events of companies missing from it (mostly
 delisted ones) have a blank `code`. It gives dates but no ratios: get the split/issue ratio from

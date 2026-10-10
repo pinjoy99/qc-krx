@@ -46,8 +46,12 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--date", help="YYYYMMDD (default: most recent date with data)")
     i.add_argument("--markets", default=",".join(krx_api.INFO_ENDPOINTS), help="comma-separated subset of %(default)s")
 
-    sub.add_parser("dividends", help="download dividend history from data.go.kr (needs DATA_GO_KR_KEY)")
-    sub.add_parser("rights", help="download corporate-action schedules from data.go.kr (needs DATA_GO_KR_KEY)")
+    dv = sub.add_parser("dividends", help="download dividend history from data.go.kr (needs DATA_GO_KR_KEY)")
+    dv.add_argument("--max-age-days", type=float, default=1, help="skip if the saved copy is newer (default: 1)")
+    dv.add_argument("--force", action="store_true", help="download even if the saved copy is recent")
+    rg = sub.add_parser("rights", help="download corporate-action schedules from data.go.kr (needs DATA_GO_KR_KEY)")
+    rg.add_argument("--max-age-days", type=float, default=7, help="skip if the saved copy is newer (default: 7)")
+    rg.add_argument("--force", action="store_true", help="download even if the saved copy is recent")
 
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
@@ -108,13 +112,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     elif args.cmd == "dividends":
         try:
-            dividends.scrape_dividends(dividends.key_from_env(), root)
+            dividends.scrape_dividends(dividends.key_from_env(), root, 0 if args.force else args.max_age_days)
         except dividends.DividendApiError as e:
             logging.error("dividend API error: %s", e)
             return 1
     elif args.cmd == "rights":
         try:
-            rights.scrape_rights(dividends.key_from_env(), root)
+            rights.scrape_rights(dividends.key_from_env(), root, 0 if args.force else args.max_age_days)
         except rights.RightsApiError as e:
             logging.error("rights API error (re-run to resume): %s", e)
             return 1
