@@ -67,6 +67,26 @@ wrong for records before a split, and about 10-15% of cash dividends each year c
 but no amount (blank here; `cash_rate_pct` and `par_value_current` are kept for reference).
 Announced dividends whose amount isn't set yet also have a blank amount.
 
+## Corporate actions (data.go.kr)
+
+The FSC rights-schedule API ([금융위원회_주식권리일정정보](https://www.data.go.kr/data/15059609/openapi.do),
+`apis.data.go.kr/1160100/GetStocRighScheService_V2/getRighExerReasSche_V2`, same `DATA_GO_KR_KEY`)
+has one row per date of every corporate action since 2010 (~1.26M rows): splits, reverse splits,
+bonus/rights issues, capital reductions, mergers, spin-offs, name changes, dividends, meetings.
+
+```bash
+python -m qc_krx rights        # whole table, ~126 calls (15-25 min); an interrupted run resumes
+python -m qc_krx build         # also writes data/corporate_actions.csv
+```
+
+The API ignores date-range filters, so every run fetches the full table. It has no stock code,
+only the company registration number (`crno`), which is mapped to the common share's code
+through the dividend table (run `dividends` first). It gives dates but no ratios: get the
+split/issue ratio from the change in listed shares (`LIST_SHRS`) in the KRX daily data around
+`ex_date`. `corporate_actions.csv` has one row per event with `type`, `base_date`, `record_date`,
+`ex_date`, `listing_date`, `issue_date`, `delivery_date`, `payment_date`, `dividend_pay_date`,
+`meeting_date`.
+
 ## aikstockdata.com
 
 | File | Contents | Depth |
@@ -118,6 +138,8 @@ data/index/{name}.csv                date,open,high,low,close,volume,value,marke
 data/indices.csv                     file,series,name,first_date,last_date
 data/raw/dividends/{basDt}.csv.gz    latest dividend table snapshot (all API fields)
 data/dividends.csv                   code,isin,name,share_class,...,record_date,pay_date,type,cash_per_share,...
+data/raw/rights/{YYYYMMDD}.csv.gz    latest corporate-action schedule snapshot (all API fields)
+data/corporate_actions.csv           code,crno,company,type,type_ko,base_date,record_date,ex_date,...
 ```
 
 Main indices get short file names (`KOSPI`, `KOSPI200`, `KOSDAQ`, `KOSDAQ150`, `KRX300`); the

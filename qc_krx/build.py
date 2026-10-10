@@ -24,6 +24,7 @@ import zipfile
 from pathlib import Path
 
 from qc_krx.dividends import build_dividends
+from qc_krx.rights import build_corporate_actions
 
 log = logging.getLogger(__name__)
 
@@ -253,6 +254,9 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     n_div = build_dividends(root)
     if n_div:
         log.info("build: wrote %d dividend records", n_div)
+    n_ca = build_corporate_actions(root)
+    if n_ca:
+        log.info("build: wrote %d corporate actions", n_ca)
     log.info("build: wrote %d securities (%d with KRX data, %d aikstockdata daily file(s))",
              n, len(krx_meta), len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
     return n

@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 
-from qc_krx import build, dividends, krx_api, scraper
+from qc_krx import build, dividends, krx_api, rights, scraper
 from qc_krx.client import Client
 
 
@@ -47,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--markets", default=",".join(krx_api.INFO_ENDPOINTS), help="comma-separated subset of %(default)s")
 
     sub.add_parser("dividends", help="download dividend history from data.go.kr (needs DATA_GO_KR_KEY)")
+    sub.add_parser("rights", help="download corporate-action schedules from data.go.kr (needs DATA_GO_KR_KEY)")
 
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
@@ -110,6 +111,12 @@ def main(argv: list[str] | None = None) -> int:
             dividends.scrape_dividends(dividends.key_from_env(), root)
         except dividends.DividendApiError as e:
             logging.error("dividend API error: %s", e)
+            return 1
+    elif args.cmd == "rights":
+        try:
+            rights.scrape_rights(dividends.key_from_env(), root)
+        except rights.RightsApiError as e:
+            logging.error("rights API error (re-run to resume): %s", e)
             return 1
     elif args.cmd == "build":
         build.build(root, lean=not args.no_lean, market=args.market)
