@@ -143,6 +143,9 @@ data/raw/dividends/{basDt}.csv.gz    latest dividend table snapshot (all API fie
 data/dividends.csv                   code,isin,name,share_class,...,record_date,pay_date,type,cash_per_share,...
 data/raw/rights/{YYYYMMDD}.csv.gz    latest corporate-action schedule snapshot (all API fields)
 data/corporate_actions.csv           code,crno,company,type,type_ko,base_date,record_date,ex_date,...
+data/lean/equity/krx/factor_files/{code}.csv   date,price_factor,split_factor,reference_price
+data/lean/equity/krx/map_files/{code}.csv      date,ticker (first date; 20501231 or delisting date)
+data/factor_events.csv               code,type,date,cum_date,ratio,amount (audit trail)
 ```
 
 Main indices get short file names (`KOSPI`, `KOSPI200`, `KOSDAQ`, `KOSDAQ150`, `KRX300`); the
@@ -157,9 +160,29 @@ both OHLCV sources report open/high/low as 0; these are replaced by the close.
 In `securities.csv`, a `krx_last_date` earlier than the latest KRX date means the security
 delisted (or was suspended) — use it to keep backtests free of survivorship bias.
 
-The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000).
-Map and factor files are **not** generated, and `krx` is not a built-in LEAN market, so
-register the market (`Market.add("krx", <id>)`) or load the CSVs as custom data.
+The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000, raw
+unadjusted). `krx` is not a built-in LEAN market, so register it (`Market.add("krx", <id>)`).
+
+### Factor and map files
+
+`build` also writes `lean/equity/krx/factor_files/{code}.csv` and `map_files/{code}.csv` for every
+security with KRX Open API data, so LEAN can adjust prices (`DataNormalizationMode.ADJUSTED`) and
+knows when a security delisted. Factor rows are `date,price_factor,split_factor,reference_price`,
+dated the last trading day before each event and ending with `20501231,1,1,0`.
+
+- **Split factor**: KRX's own adjustment ratio. KRX reports each day's change against a base
+  price that equals the previous close except on adjustment days (splits, reverse splits,
+  bonus/rights issues, capital reductions, spin-offs), when it's the adjusted previous close, so
+  `base / previous close` is the exchange's ratio — rights issues are adjusted like splits.
+- **Price factor**: cash dividends from `dividends.csv`, `1 - dividend / close` before the
+  ex-date (the trading day before the record date, T+2). KRX doesn't adjust for cash dividends,
+  so nothing is counted twice. Run `dividends` before `build`, or the price factors stay 1.
+- **Map files**: first trading date, then `20501231` — or the last trading date for a security
+  that stopped trading (LEAN's delisting signal). KRX codes don't change on renames.
+
+`factor_events.csv` lists every adjustment and dividend used, for auditing. Check on the 2010–2026
+KOSPI/ETF data: on the 22k event days, moves beyond ±30% (Korea's daily limit) drop from 634 in
+raw prices to 7 in adjusted prices (limit-down days, and a fund's final liquidation payout).
 
 ## Google Colab → Google Drive
 

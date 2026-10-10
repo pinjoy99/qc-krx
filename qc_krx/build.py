@@ -23,6 +23,7 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from qc_krx import factors
 from qc_krx.dividends import build_dividends
 from qc_krx.rights import build_corporate_actions
 
@@ -82,9 +83,10 @@ def _krx_bar(r: dict) -> Bar | None:
     return (o, h, l, close, _int(r["ACC_TRDVOL"].replace(",", "")) or 0, "krx")
 
 
-def stage_krx(root: Path, stage: Path) -> dict[str, list[str]]:
+def stage_krx(root: Path, stage: Path) -> tuple[dict[str, list[str]], list[str]]:
     """Regroup raw/krx day files into one CSV per security under ``stage``, a year at a
-    time to bound memory. Returns code -> [name, market, first_date, last_date]."""
+    time to bound memory; each line also keeps KRX's base price (close - change) for the
+    factor files. Returns (code -> [name, market, first_date, last_date], trading dates)."""
     if stage.exists():
         shutil.rmtree(stage)
     stage.mkdir(parents=True)
@@ -92,6 +94,7 @@ def stage_krx(root: Path, stage: Path) -> dict[str, list[str]]:
     for path in (root / "raw" / "krx").glob("*/*/*.csv.gz"):
         files.setdefault(path.parent.name, []).append(path)
     meta: dict[str, list[str]] = {}
+    calendar: set[str] = set()
     for year in sorted(files):
         lines: dict[str, list[str]] = {}
         for path in sorted(files[year], key=lambda p: p.name):
@@ -102,7 +105,10 @@ def stage_krx(root: Path, stage: Path) -> dict[str, list[str]]:
                     if bar is None:
                         continue
                     code, date = r["ISU_CD"], r["BAS_DD"]
-                    lines.setdefault(code, []).append(f"{date},{bar[0]},{bar[1]},{bar[2]},{bar[3]},{bar[4]}\n")
+                    raw_change = r.get("CMPPREVDD_PRC", "").replace(",", "").strip()
+                    base = bar[3] - int(float(raw_change)) if raw_change not in ("", "-") else ""
+                    lines.setdefault(code, []).append(f"{date},{bar[0]},{bar[1]},{bar[2]},{bar[3]},{bar[4]},{base}\n")
+                    calendar.add(date)
                     m = meta.setdefault(code, [r["ISU_NM"], r.get("MKT_NM") or market, date, date])
                     m[2] = min(m[2], date)
                     if date >= m[3]:
@@ -110,16 +116,20 @@ def stage_krx(root: Path, stage: Path) -> dict[str, list[str]]:
         for code, ls in lines.items():
             with open(stage / f"{code}.csv", "a", encoding="utf-8") as f:
                 f.writelines(ls)
-    return meta
+    return meta, sorted(calendar)
 
 
-def load_staged(path: Path) -> dict[str, Bar]:
+def load_staged(path: Path) -> tuple[dict[str, Bar], dict[str, int]]:
+    """(date -> bar, date -> KRX base price) for one staged security."""
     bars: dict[str, Bar] = {}
+    bases: dict[str, int] = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
-            d, o, h, l, c, v = line.rstrip("\n").split(",")
+            d, o, h, l, c, v, base = line.rstrip("\n").split(",")
             bars[d] = (int(o), int(h), int(l), int(c), int(v), "krx")
-    return bars
+            if base:
+                bases[d] = int(base)
+    return bars, bases
 
 
 # KRX security-master fields copied into securities.csv: output column -> API field.
@@ -231,29 +241,48 @@ def build_indices(root: Path) -> int:
 def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     daily = load_daily_archive(root)
     stage = root / ".build" / "krx_staged"
-    krx_meta = stage_krx(root, stage)
+    krx_meta, calendar = stage_krx(root, stage)
+    n_div = build_dividends(root)  # before the loop: factor files read dividends.csv
+    cash_dividends = factors.load_cash_dividends(root)
     hist_dir = root / "raw" / "history"
     codes = sorted({p.stem for p in hist_dir.glob("*.csv")} | set(daily) | set(krx_meta))
-    n = 0
+    lean_dir = root / "lean" / "equity" / market
+    audit = io.StringIO()
+    audit.write("code,type,date,cum_date,ratio,amount\n")
+    n = n_factor = 0
     for code in codes:
         hpath, kpath = hist_dir / f"{code}.csv", stage / f"{code}.csv"
         history = load_history(hpath) if hpath.exists() else {}
-        krx = load_staged(kpath) if kpath.exists() else {}
+        krx, bases = load_staged(kpath) if kpath.exists() else ({}, {})
         bars = merge(history, daily.get(code, {}), krx)
         if not bars:
             continue
         write_ohlcv_csv(root / "ohlcv" / f"{code}.csv", bars)
         if lean:
-            write_lean_zip(root / "lean" / "equity" / market / "daily" / f"{code.lower()}.zip", code, bars)
+            write_lean_zip(lean_dir / "daily" / f"{code.lower()}.zip", code, bars)
+            # Factor and map files need KRX's base prices and listing span, so KRX data only.
+            if krx:
+                closes = sorted((d, b[3]) for d, b in krx.items())
+                rows, used = factors.factor_rows(closes, bases, cash_dividends.get(code, []), calendar)
+                if rows:
+                    factors.write_rows(lean_dir / "factor_files" / f"{code.lower()}.csv", rows)
+                    n_factor += 1
+                for e in used:
+                    audit.write(f"{code},{e['type']},{e['date']},{e['cum_date']},{e['ratio']:.10g},{e.get('amount', '')}\n")
+                factors.write_rows(lean_dir / "map_files" / f"{code.lower()}.csv",
+                                   factors.map_rows(code, closes[0][0], closes[-1][0], calendar[-1]))
         n += 1
+    if lean and krx_meta:
+        (root / "factor_events.csv").write_text(audit.getvalue(), encoding="utf-8")
     write_securities(root, krx_meta, codes)
     shutil.rmtree(stage.parent, ignore_errors=True)
     n_idx = build_indices(root)
     if n_idx:
         log.info("build: wrote %d indices", n_idx)
-    n_div = build_dividends(root)
     if n_div:
         log.info("build: wrote %d dividend records", n_div)
+    if n_factor:
+        log.info("build: wrote %d factor files", n_factor)
     n_ca = build_corporate_actions(root)
     if n_ca:
         log.info("build: wrote %d corporate actions", n_ca)
