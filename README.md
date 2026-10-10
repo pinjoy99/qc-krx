@@ -81,9 +81,12 @@ python -m qc_krx build         # also writes data/corporate_actions.csv
 
 The API ignores date-range filters, so every run fetches the full table. It has no stock code,
 only the company registration number (`crno`), which is mapped to the common share's code
-through the dividend table (run `dividends` first). It gives dates but no ratios: get the
-split/issue ratio from the change in listed shares (`LIST_SHRS`) in the KRX daily data around
-`ex_date`. `corporate_actions.csv` has one row per event with `type`, `base_date`, `record_date`,
+through the dividend table (run `dividends` first); events of companies missing from it (mostly
+delisted ones) have a blank `code`. It gives dates but no ratios: get the split/issue ratio from
+the change in listed shares (`LIST_SHRS`) in the KRX daily data. For splits and reverse splits the
+price changes on `listing_date` (the new shares' first trading day), not `ex_date` — e.g. Samsung's
+50:1 split: record date 2018-05-02, listing date 2018-05-04, when the close went 2,650,000 → 51,900
+and listed shares 128,386,494 → 6,419,324,700. `corporate_actions.csv` has one row per event with `type`, `base_date`, `record_date`,
 `ex_date`, `listing_date`, `issue_date`, `delivery_date`, `payment_date`, `dividend_pay_date`,
 `meeting_date`.
 
