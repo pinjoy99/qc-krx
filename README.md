@@ -183,10 +183,12 @@ python -m qc_krx lean-install /path/to/Lean/Data
 ```
 
 In the algorithm: `SetTimeZone("Asia/Seoul")`, `SetAccountCurrency("KRW")`,
-`AddEquity("005930", Resolution.Daily, Market.KRX)`, and a fee model — LEAN's default
-(Interactive Brokers) fee model has no KRX equity schedule and throws `unexpected equity Market
-krx` on the first order. [`examples/KrxSmokeTest.cs`](examples/KrxSmokeTest.cs) uses a zero-fee
-model; a real KRX model (commission + sell-side transaction tax) is still to do.
+`AddEquity("005930", Resolution.Daily, Market.KRX)`, and the KRX models from
+[`examples/KrxModels.cs`](examples/KrxModels.cs): `KrxFeeModel` (commission + sell-side tax by
+settlement date and market — LEAN's default fee model throws `unexpected equity Market krx`),
+`KrxPriceVariationModel` (tick sizes), `KrxUniverseData` (daily market-cap universe) and
+`KrxIndex.Benchmark("kospi200")`. [`examples/KrxTopMarketCapAlgorithm.cs`](examples/KrxTopMarketCapAlgorithm.cs)
+is a full strategy backtest (KOSPI top 20 by market cap, 2011–2026); see `docs/GUIDE.md` 5.4.
 
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
 `examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04

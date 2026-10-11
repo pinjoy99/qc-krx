@@ -1,8 +1,10 @@
 """Install the built LEAN data into a LEAN ``Data/`` folder.
 
 LEAN already knows the ``krx`` market (id 43) for KOSPI 200 futures and indices, but ships no
-equity entries for it. This copies ``lean/equity/krx`` (daily zips, factor files, map files)
-into ``<Data>/equity/krx`` and adds what LEAN needs to trade KRX equities:
+equity entries for it. This copies ``lean/equity/krx`` (daily zips, factor files, map files,
+universe files, securities.csv) into ``<Data>/equity/krx`` and ``lean/index/krx`` (KOSPI,
+KOSPI 200, ... index levels) into ``<Data>/index/krx``, and adds what LEAN needs to trade KRX
+equities:
 
 * ``market-hours-database.json``: an ``Equity-krx-[*]`` entry, Asia/Seoul, regular session
   09:00-15:30. Holidays come from LEAN's own ``Index-krx-[*]`` entry when present (maintained by
@@ -74,6 +76,9 @@ def install(root: Path, lean_data: Path, market: str = "krx") -> dict:
 
     dst = lean_data / "equity" / market
     shutil.copytree(src, dst, dirs_exist_ok=True)
+    index_src = root / "lean" / "index" / market
+    if index_src.is_dir():  # LEAN already has Index-<market> hours and symbol properties
+        shutil.copytree(index_src, lean_data / "index" / market, dirs_exist_ok=True)
 
     mhdb = json.loads(mhdb_path.read_text(encoding="utf-8"))
     entries = mhdb["entries"]

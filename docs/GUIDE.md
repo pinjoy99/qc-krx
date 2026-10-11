@@ -224,13 +224,14 @@ it is what was tested.
    ```bash
    python -m qc_krx --root <data or krxdata> lean-install <path to Lean>/Data
    ```
-   This copies the prices, factor files and map files into `Lean/Data/equity/krx/`, adds the
+   This copies the prices, factor files, map files, universe files and `securities.csv` into
+   `Lean/Data/equity/krx/` and the KOSPI/KOSPI 200 index levels into `Lean/Data/index/krx/`, adds the
    `Equity-krx-[*]` entry to `Data/market-hours/market-hours-database.json` (Seoul time,
    09:00–15:30, KRX holidays), and adds `krx,[*],equity,,KRW,1,1,1` to
    `Data/symbol-properties/symbol-properties-database.csv`. Running it again is safe.
    **Re-run it after every data update.**
 
-### 5.3 Run the sample backtest
+### 5.3 Run the data smoke test
 
 1. Copy the example algorithm into LEAN and rebuild:
    ```bash
@@ -255,18 +256,49 @@ it is what was tested.
    END value=95,409,943 KRW holdings: 005930=1188
    ```
 
-### 5.4 Writing your own algorithm — required settings
+### 5.4 Run the strategy backtest (KOSPI top 20 by market cap)
+
+`examples/KrxTopMarketCapAlgorithm.cs` holds the 20 largest KOSPI common stocks, equal weight,
+rebalanced monthly, 2011-01-01 → 2026-09-30, with KRX fees/taxes and the KOSPI 200 benchmark.
+
+```bash
+cp <qc-krx>/examples/KrxModels.cs <qc-krx>/examples/KrxTopMarketCapAlgorithm.cs <Lean>/Algorithm.CSharp/
+cd <Lean> && dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release
+cd Launcher/bin/Release
+dotnet QuantConnect.Lean.Launcher.dll --algorithm-type-name KrxTopMarketCapAlgorithm \
+  --algorithm-language CSharp --algorithm-location QuantConnect.Algorithm.CSharp.dll \
+  --data-folder <Lean>/Data/ --close-automatically true
+```
+
+It runs in under a minute. The log starts with `CHECK tax …` / `CHECK tick …` lines (the model
+values for known dates) and ends with LEAN's statistics. Reference result on data to 2026-10-06:
+CAGR 5.89%, max drawdown 40.8%, Sharpe 0.197, beta 0.821 and alpha −0.016 vs KOSPI 200, total
+fees ₩44.7M on ₩1B start. These numbers are a pipeline test, not investment advice.
+
+### 5.5 Writing your own algorithm — required settings
+
+Copy `examples/KrxModels.cs` into `Algorithm.CSharp` and use:
 
 ```csharp
 SetTimeZone("Asia/Seoul");
 SetAccountCurrency("KRW");
 SetCash(100_000_000);
+var boards = KrxBoards.Load();                       // code -> KOSPI/KOSDAQ/KONEX/ETF
+SetSecurityInitializer(s =>
+{
+    s.SetFeeModel(new KrxFeeModel(boards));          // commission 0.015% (change per account) + sell tax
+    s.PriceVariationModel = new KrxPriceVariationModel(boards);   // KRX tick sizes
+});
+SetBenchmark(KrxIndex.Benchmark("kospi200"));        // daily KOSPI 200 from Data/index/krx
 var samsung = AddEquity("005930", Resolution.Daily, Market.KRX).Symbol;
-// LEAN's default fee model throws "unexpected equity Market krx" on the first order.
-// Until a KRX fee model exists (see TODO.md), set one explicitly, e.g.:
-SetSecurityInitializer(s => s.SetFeeModel(new ConstantFeeModel(0, "KRW")));
-SetBenchmark(samsung);   // the default benchmark (SPY) needs US data
+// or a universe: AddUniverse<KrxUniverseData>("name", Resolution.Daily, Market.KRX, data => …)
 ```
+
+- Don't use `SetBenchmark(<index symbol>)`: LEAN subscribes benchmarks hourly and the KRX index
+  data is daily, so the benchmark would be empty (alpha/beta 0). `KrxIndex.Benchmark` avoids that.
+- Without a fee model LEAN's default throws `unexpected equity Market krx` on the first order.
+- `KrxUniverseData` rows: `Board`, `Close`, `Volume`, `TradingValue`, `MarketCap`, `Shares` (raw
+  KRW as KRX reports them, for the previous trading day when selection runs).
 
 - Tickers are 6-character KRX short codes (`005930`); some newer codes contain letters (`0052D0`).
 - Prices are adjusted by default (`DataNormalizationMode.Adjusted`): splits, bonus/rights issues,

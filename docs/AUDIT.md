@@ -73,6 +73,42 @@ All code is in `qc_krx/`. Raw downloads are stored losslessly; every output is r
   pre 08:30–09:00, market 09:00–15:30, post 15:40–18:00; holidays = LEAN's `Index-krx-[*]` list ∪
   no-trade weekdays in the data) and `krx,[*],equity,,KRW,1,1,1`.
 
+### 2.3 KRX reality models (`examples/KrxModels.cs`)
+
+**Sell-side tax** (`KrxFeeModel`), by **settlement date** (T+2; the basis the law uses — e.g. the
+2025 cut applied to trades from 2024-12-27, settling 2025-01-02). Totals include 농어촌특별세 0.15%
+on KOSPI; KOSDAQ/KONEX have no 농특세; ETFs are exempt.
+
+| From (settlement) | KOSPI (거래세 + 농특세) | KOSDAQ | KONEX |
+|---|---|---|---|
+| before 2019-06-03 | 0.15% + 0.15% = 0.30% | 0.30% | 0.30% |
+| 2019-06-03 | 0.10% + 0.15% = 0.25% | 0.25% | 0.10% |
+| 2021-01-01 | 0.08% + 0.15% = 0.23% | 0.23% | 0.10% |
+| 2023-01-01 | 0.05% + 0.15% = 0.20% | 0.20% | 0.10% |
+| 2024-01-01 | 0.03% + 0.15% = 0.18% | 0.18% | 0.10% |
+| 2025-01-01 | 0.00% + 0.15% = 0.15% | 0.15% | 0.10% |
+| 2026-01-01 | 0.05% + 0.15% = 0.20% | 0.20% | 0.10% |
+
+Sources (news and broker notices, cross-checked): 2019 cut — 시사저널e / 서울신문 / 이투데이
+(2019-05); 2021 — 한국세정신문 ("코스피 0.08%, 코스닥 0.23%"); 2023–2025 — 헤럴드경제, 대신증권 /
+KB증권 notices; 2026 — 머니투데이, 한국세정신문 (2025-12). Commission: 0.015% per side by default
+(account-specific, a constructor argument). Fees and taxes are truncated to whole won.
+
+**Tick sizes** (`KrxPriceVariationModel`). From 2023-01-25, one table for KOSPI/KOSDAQ/KONEX:
+<2,000 → 1; <5,000 → 5; <20,000 → 10; <50,000 → 50; <200,000 → 100; <500,000 → 500; else 1,000.
+Before (introduced October 2010), KOSPI: <1,000 → 1; <5,000 → 5; <10,000 → 10; <50,000 → 50;
+<100,000 → 100; <500,000 → 500; else 1,000 (verified from news/dictionary sources). KOSDAQ/KONEX
+before 2023: same up to 50,000, then 100 — **not verified from a primary source**. ETFs: 5 won
+(unchanged in 2023 per the exchange notice). The table used for January–October 2010 is the
+post-October-2010 one — **not verified for that period**.
+
+**Universe** (`KrxUniverseData`, `lean/equity/krx/universe/yyyyMMdd.zip`): every security with
+a close that day, with KRX's own market cap (`MKTCAP`), trading value and listed shares.
+
+**Benchmark** (`KrxIndex`): LEAN subscribes a security benchmark at hourly resolution; with daily
+index data that benchmark was empty (first run: alpha 0, beta 0, tracking error = volatility).
+`KrxIndex.Benchmark` passes the daily KOSPI 200 close as a benchmark function instead.
+
 ## 3. Verification performed
 
 | Check | Result |
@@ -85,6 +121,9 @@ All code is in `qc_krx/`. Raw downloads are stored losslessly; every output is r
 | Base-price adjustments vs corporate actions (KOSPI) | 1,599 adjustments; 1,064 match a nearby corporate action (rights 368, bonus 236, split 163, capital reduction 151, reverse split 72, spin-off 63…); unmatched ones are mostly preferred shares (mapping points to the common share), delisted companies and investment funds |
 | Factor files, whole market | On 22,207 event days (12,530 adjustments, 9,677 dividends), moves beyond ±30% (the daily limit): **634 raw → 7 adjusted**. The 7: four limit-down days (−30%), two ~+32%, and 168490 (a resource fund paying 101 won on a 103 won price before delisting — economically correct) |
 | Holidays | All 248 no-trade weekdays in the data are in LEAN's own KRX holiday list (399 dates through 2027) |
+| Model self-checks (logged by `KrxTopMarketCapAlgorithm`) | tax KOSPI 2018-06-01 0.30%, 2019-06-03 0.25%, 2025-01-02 0.15%, 2026-01-02 0.20%, KONEX 2020 0.10%, ETF 0; tick 150,000 won: 500 (2022 KOSPI) → 100 (2023), 100 (2022 KOSDAQ); 1,500 won 2023: 1; ETF 5 |
+| Strategy backtest (`examples/KrxTopMarketCapAlgorithm.cs`: KOSPI top 20 by market cap, equal weight, monthly, 2011-01-01 → 2026-09-30, ₩1B, KRX fees/taxes) | CAGR 5.89%, net profit 146.6%, max drawdown 40.8%, Sharpe 0.197, beta 0.821 / alpha −0.016 / information ratio −0.339 / tracking error 0.079 vs KOSPI 200, 2,437 orders, fees ₩44.7M; runtime ~34 s |
+| Independent replication of that strategy in Python (`replicate` script in the session; same selection, adjusted close-to-close monthly returns incl. dividends, no fees, fully invested) | CAGR 6.36%, month-end max drawdown 37.8% — consistent with LEAN after fees, the 1% cash buffer and next-day execution. KOSPI 200 price index over the same period: 273.81 → 1,081.82, CAGR 9.09% (excluding dividends) |
 | LEAN backtest (`examples/KrxSmokeTest.cs`, LEAN built from source, commit `80e7843`, .NET SDK 10.0.401) | Split event 2018-05-04 factor 0.02; adjusted close 43,070.87 → 42,176.95 (−2.1%, the real move); raw history 2,650,000 → 51,900; Samsung dividends 354 won/quarter, Woori 650 won; Woori Bank (000030) delisted 2019-02-12 and position closed; account in KRW |
 
 ## 4. Decisions and their reasons
@@ -111,7 +150,10 @@ All code is in `qc_krx/`. Raw downloads are stored losslessly; every output is r
 - Corporate actions without a code: ~33% of all events, ~39% of splits (companies missing from the
   dividend table, mostly delisted). This doesn't affect factor files.
 - Symbol properties use a fixed 1-won price step; real KRX tick sizes depend on price.
-- LEAN's default fee model rejects KRX equities; the sample uses zero fees.
+- LEAN's default fee model rejects KRX equities; use `KrxFeeModel` (the smoke test uses zero fees).
+- LEAN's "Estimated Strategy Capacity" shows ₩0 for KRX backtests (not investigated).
+- The strategy example treats codes ending in "0" as common shares (KRX convention) and has no
+  slippage model; universe selection uses the previous trading day's data.
 - Only a C# algorithm was tested in LEAN; Python algorithms were not.
 - Colab runs take ~5 minutes, mostly reading ~13,000 small raw files over Drive.
 - Data use: aikstockdata and KOGL-licensed data are non-commercial; check the terms before any
@@ -142,6 +184,8 @@ All code is in `qc_krx/`. Raw downloads are stored losslessly; every output is r
 | `2e8b21a` | 2026-10-10 | Skip recent dividend/rights downloads; step timings |
 | `08162f7` | 2026-10-10 | Rewrite only the current year's combined file |
 | `70af60e` | 2026-10-10 | `lean-install` and tested LEAN sample algorithm |
+| `9d2337c` | 2026-10-10 | Step-by-step guide, audit record, to-do list |
+| (this commit) | 2026-10-11 | KRX fee/tax and tick models, KOSPI 200 benchmark, daily universe files, first strategy backtest |
 
 ## 8. Security note
 

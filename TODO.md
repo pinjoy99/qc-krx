@@ -10,18 +10,20 @@ Ordered by priority. ✅ = done (kept for the record).
 - [ ] **Get the remaining KRX services approved** and add them to the notebook settings:
       코스닥 / 코넥스 일별매매정보 (prices), 코스닥 / 코넥스 종목기본정보 (security info),
       KOSDAQ / KRX 시리즈 일별시세정보 (indices). Then run once with `REWRITE_ALL_YEARS = True`.
-- [ ] **Write a KRX fee model for LEAN** (plan §8.3): broker commission (account-specific, e.g.
-      0.015%) plus the sell-side securities transaction tax by year and market. Without it LEAN's
-      default model throws `unexpected equity Market krx`.
 
 ## Next
 
-- [ ] **KRX tick-size (price variation) model** (plan §8.3, §6.1): tick size by price band and market,
-      with the 2023 reform; the data uses a fixed 1-won step.
-- [ ] **Index data in LEAN format** (`index/krx/daily/*.zip`) so `SetBenchmark` can use KOSPI / KOSPI 200.
+- [ ] **Verify the pre-2023 KOSDAQ/KONEX tick table and the Jan–Oct 2010 tick table** against KRX's
+      시행세칙 (see `docs/AUDIT.md` 2.3); confirm each tax change's exact effective trade date.
+- [ ] **Slippage model** (plan §4.6) and a market-impact check for small caps; the strategy example has none.
+- [ ] **Investigate LEAN's "Estimated Strategy Capacity ₩0"** in KRX backtests.
+- [ ] **Universe flags** (plan §3.5): 관리종목 / 투자경고 / 거래정지, sector — need another source
+      (KRX 정보데이터시스템 or KIND). Preferred-share detection beyond the code-ends-in-0 rule.
+- [ ] **Python versions of the models** (`KrxModels.cs`) once LEAN's Python setup is tested.
 - [ ] **Test a Python LEAN algorithm** (requires LEAN's Python environment / pythonnet setup).
-- [ ] **Speed up the Colab build** (~4 minutes): bundle each finished year's daily files into one file
-      per year and market so the build reads ~50 files instead of ~13,000 over Drive.
+- [ ] **Speed up the Colab build** (~4 minutes, more now that universe files are built): bundle each
+      finished year's daily files into one file per year and market so the build reads ~50 files
+      instead of ~13,000 over Drive; keep the built universe files on Drive between runs.
 - [ ] **Dividends with only a rate** (~13% since 2010): fill amounts from another source (e.g. DART
       dividend disclosures) or the historical par value, then include them in price factors.
 - [ ] **Map preferred shares and delisted companies in `corporate_actions.csv`** (currently only the
@@ -45,4 +47,8 @@ Ordered by priority. ✅ = done (kept for the record).
 - ✅ Dividend history and corporate-action schedules from data.go.kr — `bd1057d`, `f5d07e2`
 - ✅ LEAN factor files and map files, validated on 22k event days — `8fe4d26`
 - ✅ `lean-install` (KRX equity market hours + symbol properties) and a LEAN backtest on real data — `70af60e`
-- ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list
+- ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list — `9d2337c`
+- ✅ 4.1 KrxFeeModel (commission + sell tax by settlement date and market) and 4.2 KrxPriceVariationModel (tick sizes incl. 2023 reform) — `examples/KrxModels.cs`
+- ✅ 2.4 Benchmark: KOSPI / KOSPI 200 index files for LEAN + `KrxIndex.Benchmark`
+- ✅ 3.5 Universe: daily `universe/yyyyMMdd.zip` (market cap, trading value, shares) + `KrxUniverseData`
+- ✅ First strategy backtest (KOSPI top 20 by market cap, 2011–2026) in LEAN, replicated independently in Python

@@ -24,6 +24,7 @@ import zipfile
 from pathlib import Path
 
 from qc_krx import factors
+from qc_krx.lean_extras import build_lean_extras
 from qc_krx.dividends import build_dividends
 from qc_krx.rights import build_corporate_actions
 
@@ -279,6 +280,8 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     n_idx = build_indices(root)
     if n_idx:
         log.info("build: wrote %d indices", n_idx)
+    if lean and krx_meta:
+        build_lean_extras(root, market)
     if n_div:
         log.info("build: wrote %d dividend records", n_div)
     if n_factor:
