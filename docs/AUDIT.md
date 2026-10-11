@@ -147,7 +147,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | Unit tests (`python -m unittest discover tests`) | 29 tests pass |
 | aikstockdata vs KRX overlap | identical close/volume on every overlapping stock-day checked (87/87; 90/90 history vs daily). `verify` 2026-10-11, daily archive 2026-08-27 → 2026-10-07: **21,972 of 21,972 KOSPI stock-days identical** in all five fields (5,212 rows not in KRX: KOSDAQ, out of scope) |
 | Yahoo daily vs KRX (`verify`, 12 codes, 2026-09-01 → 2026-10-07) | 281 of 288 stock-days identical. 6 differ: 207940 before an adjustment event, Yahoo prices × 0.99326 and volume × 1.00678 (Yahoo back-adjusts; KRX is raw). 1: 069500 volume 26.5M vs 28.2M on 2026-09-15 |
-| Yahoo minute bars vs KRX (`verify`, 12 codes, 168 code-days with KRX data, 2026-09-15 → 2026-10-07) | 357–360 bars a day, **always 09:00–14:59** (no 15:00–15:30, no closing auction); first open = KRX open on 141/168; all highs/lows inside KRX's range on 168/168 (equal on 145); last minute close = KRX close on 17/168; minute volume / KRX volume median 0.80 (10%–90%: 0.67–0.88, but 0.15–2.41 overall, 8 days > 1); 5.6% of prices off the KRX tick grid (Samsung 26%: e.g. 264,250 with a 500 tick) |
+| Yahoo minute bars vs KRX (`verify`, 12 codes, 168 code-days with KRX data, 2026-09-15 → 2026-10-07) | 357–360 bars a day, **always 09:00–14:59** (no 15:00–15:30, no closing auction); first open = KRX open on 141/168; all highs/lows inside KRX's range on 168/168 (equal on 145); last minute close = KRX close on 17/168; minute volume / KRX volume median 0.80 (10%–90%: 0.67–0.88, but 0.15–2.41 overall, 8 days > 1). The days above 1 come from **single-bar volume spikes**: 8 code-days have one minute bar holding 20–90% of the day's KRX volume (340–610× the median bar), e.g. 069500 2026-09-23 (90%), 009150 2026-09-22 (89%) — `max_bar_volume_ratio` in `verify_minute.csv`; 5.6% of prices off the KRX tick grid (Samsung 26%: e.g. 264,250 with a 500 tick) |
 | LEAN minute test (`examples/KrxMinuteSmokeTest.cs`, 005930 + 069500, 2026-09-15 → 2026-10-08) | 15 days × 360 bars 09:00–14:59 with `fillForward: false` (with fill-forward LEAN shows 390, repeating 14:59 until 15:29); 60 orders filled at 09:30/14:30; sell fee on 179 × 247,500 = ₩95,250 (0.015% + 0.20% tax), ETF sell commission only |
 | Full KRX backfill 2010-01-04 → 2026-10-06/08 | KOSPI 4,371 days (~3.8M rows), ETF 4,372 days, KOSPI index family 4,371 days (53 indices); no errors after the retry fix |
 | Colab copy on Drive vs independent download here | raw files for 2026-10-01/02/05/06 byte-size identical for KOSPI and ETF |
@@ -182,9 +182,12 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 
 - Out of scope for now: KOSDAQ, KONEX and NXT. KOSDAQ/KONEX prices, security info and other
   index families are supported by the code but not downloaded or verified.
-- Minute bars (Yahoo): 09:00–14:59 only (last 30 minutes and closing auction missing), volume not
-  reliable (median 80% of KRX's, sometimes above 100%), some prices off the tick grid, only the
-  last 28 days and a few codes. Fine for testing LEAN code and intraday logic, not for research on
+- Minute bars (Yahoo): 09:00–14:59 only — the last 20 minutes of continuous trading (15:00–15:20)
+  and the closing auction (15:20–15:30) are missing, so the 14:59 close is neither the official
+  close nor the pre-auction price. Yahoo's 5-minute (~90 days) and 60-minute (~3 years) bars stop
+  before 15:00 too (last bars 14:55 / 14:00, checked 2026-10-11), so a coarser interval doesn't
+  help. Volume not reliable (median 80% of KRX's; single-bar spikes up to 90% of the day's
+  volume), some prices off the tick grid (cause unknown), only the last 28 days and a few codes. Fine for testing LEAN code and intraday logic, not for research on
   closes, volume or long histories.
 - About 13% of cash dividends since 2010 (3,358 of 25,789) have a rate but no amount; they are not
   in the price factors, so adjusted prices are slightly off around those ex-dates.

@@ -19,6 +19,8 @@ them are under "Later: scope expansion"). Daily bars: KRX only; minute bars: Yah
       so a longer gap leaves a hole in the minute data. Part of the daily/weekly automation below.
 - [ ] **Thresholds for `verify`**: decide acceptable differences (e.g. aikstockdata must match
       exactly; Yahoo daily only around adjustment events) and make the notebook flag violations.
+- [ ] Yahoo minute volume spikes: flag or drop bars holding a large share of the day's KRX volume
+      (`max_bar_volume_ratio` in `verify_minute.csv`) before using minute volume.
 - [ ] Yahoo: re-measure the minute bar coverage (09:00–14:59) and the off-tick prices now and
       then — Yahoo may change its feed; `verify_minute.csv` shows it.
 - [ ] **Universe flags** (3.5): 관리종목 / 투자경고 / 거래정지, sector — need another source

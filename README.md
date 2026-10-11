@@ -124,6 +124,12 @@ What the bars are (measured October 2026; details in `docs/AUDIT.md` §3):
   last minute close isn't the official close. Use the KRX daily bars for closes.
 - Some prices are off the KRX tick grid (e.g. 264,250 for Samsung, whose tick is 500), so not
   every price is a trade price. All highs/lows lay inside KRX's daily range.
+- Volume has spikes: on some days one minute bar holds 20–90% of the day's KRX volume, so the
+  minute volumes can add up to more than the day's. Don't use them for volume-based logic.
+- Yahoo's 5-minute and 60-minute bars also stop before 15:00, and minute data older than ~28
+  days can't be fetched later. Running `yahoo-minute` weekly keeps the 28-day window gap-free;
+  to build a longer history you would also need `--keep-days 0` (more storage), and it would
+  still lack 15:00–15:30.
 - Raw (unadjusted) prices in KST, bar start times; LEAN applies the same factor files as daily.
 
 Yahoo has no official API and blocks bots and bursts (HTTP 429). `yfinance` >= 0.2.54 passes

@@ -9,7 +9,8 @@ Outputs, under ``reports/``:
 * ``verify_mismatches.csv`` - one row per differing field: source, code, date, field, krx, other.
 * ``verify_minute.csv`` - one row per Yahoo minute day: bar count, first/last bar time, whether
   the first open equals KRX's open, whether all highs/lows lie inside KRX's daily range, minute
-  volume / KRX volume, last minute close vs KRX close, prices off the KRX tick grid.
+  volume / KRX volume, the largest single bar's volume / KRX volume (spikes), last minute close vs
+  KRX close, prices off the KRX tick grid.
 """
 
 from __future__ import annotations
@@ -99,19 +100,20 @@ def compare(source: str, code: str, krx: dict[str, tuple], other: dict[str, tupl
 
 def minute_row(code: str, date: str, market: str, krx_bar: tuple | None, rows: list[dict]) -> list:
     if not rows:
-        return [code, date, 0, "", "", "", "", "", "", "", krx_bar[3] if krx_bar else "", ""]
+        return [code, date, 0, "", "", "", "", "", "", "", "", krx_bar[3] if krx_bar else "", ""]
     opens = [float(r["open"]) for r in rows]
     highs = [float(r["high"]) for r in rows]
     lows = [float(r["low"]) for r in rows]
     closes = [float(r["close"]) for r in rows]
-    volume = sum(int(r["volume"]) for r in rows)
+    volumes = [int(r["volume"]) for r in rows]
+    volume = sum(volumes)
     off_tick = sum(1 for p in opens + highs + lows + closes if p % tick(market, p))
     if krx_bar is None:
-        return [code, date, len(rows), rows[0]["time"], rows[-1]["time"], "", "", "", "", closes[-1], "", off_tick]
+        return [code, date, len(rows), rows[0]["time"], rows[-1]["time"], "", "", "", "", "", closes[-1], "", off_tick]
     o, h, l, c, v = krx_bar
     return [code, date, len(rows), rows[0]["time"], rows[-1]["time"],
             int(opens[0] == o), int(max(highs) <= h and min(lows) >= l), int(max(highs) == h and min(lows) == l),
-            round(volume / v, 3) if v else "", closes[-1], c, off_tick]
+            round(volume / v, 3) if v else "", round(max(volumes) / v, 3) if v else "", closes[-1], c, off_tick]
 
 
 def verify(root: Path) -> dict:
@@ -144,18 +146,20 @@ def verify(root: Path) -> dict:
     _write(out / "verify_mismatches.csv", ["source", "code", "date", "field", "krx", "other"], mismatches)
     _write(out / "verify_minute.csv",
            ["code", "date", "bars", "first", "last", "open_eq_krx", "inside_krx_range", "range_eq_krx",
-            "volume_ratio", "last_close", "krx_close", "off_tick_prices"], minute_rows)
+            "volume_ratio", "max_bar_volume_ratio", "last_close", "krx_close", "off_tick_prices"], minute_rows)
     _write(out / "verify_summary.csv", ["source", "compared", "matching", "differing", "not_in_krx"],
            [[s, t["compared"], t["matching"], t["differing"], t["not_in_krx"]] for s, t in sorted(totals.items())])
     for s, t in sorted(totals.items()):
         log.info("verify %s: %d stock-days compared, %d match, %d differ, %d not in KRX",
                  s, t["compared"], t["matching"], t["differing"], t["not_in_krx"])
     if minute_rows:
-        with_krx = [r for r in minute_rows if r[2] and r[10] != ""]
+        with_krx = [r for r in minute_rows if r[2] and r[11] != ""]
         ratios = sorted(r[8] for r in with_krx if r[8] != "")
+        spikes = sum(1 for r in with_krx if r[9] != "" and r[9] > 0.2)
         log.info("verify yahoo_minute: %d days (%d with KRX data); open = KRX open on %d, inside KRX range on %d, "
-                 "median volume ratio %s", len(minute_rows), len(with_krx), sum(r[5] for r in with_krx),
-                 sum(r[6] for r in with_krx), ratios[len(ratios) // 2] if ratios else "-")
+                 "median volume ratio %s, %d days with one bar > 20%% of the day's KRX volume",
+                 len(minute_rows), len(with_krx), sum(r[5] for r in with_krx), sum(r[6] for r in with_krx),
+                 ratios[len(ratios) // 2] if ratios else "-", spikes)
     return totals
 
 
