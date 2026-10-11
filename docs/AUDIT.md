@@ -185,7 +185,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `08162f7` | 2026-10-10 | Rewrite only the current year's combined file |
 | `70af60e` | 2026-10-10 | `lean-install` and tested LEAN sample algorithm |
 | `9d2337c` | 2026-10-10 | Step-by-step guide, audit record, to-do list |
-| (this commit) | 2026-10-11 | KRX fee/tax and tick models, KOSPI 200 benchmark, daily universe files, first strategy backtest |
+| `58f9804` | 2026-10-11 | KRX fee/tax and tick models, KOSPI 200 benchmark, daily universe files, first strategy backtest |
 
 ## 8. Security note
 
