@@ -225,7 +225,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `ecf7234` | 2026-10-11 | `verify`: Yahoo minute volume spikes |
 | `da1ad3c` | 2026-10-11 | Beginner's guide |
 | `4141be7` | 2026-10-11 | Python KRX models and examples for the LEAN CLI; beginner's guide uses Python |
-| (this change) | 2026-10-11 | Minute data removed from the project until a better source is available |
+| `874e976` | 2026-10-11 | Minute data removed from the project until a better source is available |
 
 ## 8. Security note
 
