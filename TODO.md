@@ -86,7 +86,7 @@ them are under "Later: scope expansion"). Daily bars: KRX only; minute bars: Yah
 - ✅ 2.4 Benchmark data: KOSPI / KOSPI 200 index files for LEAN — `58f9804`
 - ✅ 3.5 Universe: daily `universe/yyyyMMdd.zip` (market cap, trading value, shares) — `58f9804`
 - ✅ Scope KOSPI + ETF; KRX the only daily source; Yahoo minute bars (few codes, 28 days, rate
-  limiting) → LEAN minute files; `verify` against aikstockdata and Yahoo
+  limiting) → LEAN minute files; `verify` against aikstockdata and Yahoo — `baafa70`
 
 ### qc-krx-market
 - ✅ `lean-install` (KRX equity market hours + symbol properties) and a LEAN backtest on real data — `70af60e`

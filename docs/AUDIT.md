@@ -229,7 +229,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `9d2337c` | 2026-10-10 | Step-by-step guide, audit record, to-do list |
 | `58f9804` | 2026-10-11 | KRX fee/tax and tick models, KOSPI 200 benchmark, daily universe files, first strategy backtest |
 | `ced8ab5` | 2026-10-11 | Three-part project structure (`docs/COMPONENTS.md`) |
-| (this change) | 2026-10-11 | Scope KOSPI + ETF; KRX-only daily data; Yahoo minute bars (few codes, 28 days, rate limiting); `verify` cross-checks with aikstockdata and Yahoo; LEAN minute smoke test |
+| `baafa70` | 2026-10-11 | Scope KOSPI + ETF; KRX-only daily data; Yahoo minute bars (few codes, 28 days, rate limiting); `verify` cross-checks with aikstockdata and Yahoo; LEAN minute smoke test |
 
 ## 8. Security note
 
