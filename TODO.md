@@ -99,4 +99,5 @@ them are under "Later: scope expansion"). Daily bars: KRX only; minute bars: Yah
 
 ### Documentation
 - ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list — `9d2337c`
+- ✅ Beginner's guide (`docs/BEGINNER.md`)
 - ✅ Three-part project structure (`docs/COMPONENTS.md`) — `ced8ab5`
