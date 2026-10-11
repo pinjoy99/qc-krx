@@ -250,6 +250,14 @@ is a full strategy backtest (KOSPI top 20 by market cap, 2011–2026); see `docs
 [`examples/KrxMinuteSmokeTest.cs`](examples/KrxMinuteSmokeTest.cs) runs on the minute data
 (`AddEquity(..., Resolution.Minute, Market.KRX, fillForward: false)`); see `docs/GUIDE.md` 5.5.
 
+**Python / LEAN CLI (Docker):** [`examples/python/krx_models.py`](examples/python/krx_models.py)
+has the same models in Python (`KrxBoards`, `KrxFeeModel`, `KrxPriceVariationModel`,
+`KrxUniverseData`, `krx_benchmark`, and `krx_initialize` to set fees and tick sizes in one line).
+Copy it next to `main.py` in a `lean init` project, run `lean-install` on the workspace's `data/`
+folder, and `lean backtest` as usual — no C# or custom image needed. Python versions of the
+examples: `examples/python/krx_top_market_cap/main.py`, `examples/python/krx_minute_smoke_test/main.py`.
+Step by step: [docs/BEGINNER.md](docs/BEGINNER.md) Stage 4.
+
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
 `examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04
 (raw close 2,650,000 -> 51,900; adjusted 43,071 -> 42,177, the real -2.1% move), its quarterly

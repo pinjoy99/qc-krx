@@ -357,7 +357,31 @@ var samsung = AddEquity("005930", Resolution.Daily, Market.KRX).Symbol;
   capital reductions and cash dividends. Use `DataNormalizationMode.Raw` for exchange prices.
 - Delisted stocks are included and are delisted by LEAN on their last trading day, so
   backtests are free of survivorship bias.
-- Python algorithms use the same data and settings, but LEAN's Python setup was not tested here.
+- Python algorithms: use `examples/python/krx_models.py` (same models, same names) — see 5.7.
+
+### 5.7 Python algorithms with the LEAN CLI (Docker)
+
+If you use `pip install lean` / `lean init` with Python, you don't need .NET or a source build:
+
+1. `python -m qc_krx --root <data root> lean-install <workspace>/data` (the workspace made by
+   `lean init`; its `data/` folder is what the Docker container reads).
+2. Copy `examples/python/krx_models.py` into the project folder next to `main.py`.
+3. In `initialize`:
+   ```python
+   from krx_models import KrxBoards, krx_initialize, krx_benchmark
+   self.set_time_zone("Asia/Seoul"); self.set_account_currency("KRW")
+   boards = KrxBoards.load()
+   self.set_security_initializer(lambda s: krx_initialize(s, boards))   # KrxFeeModel + KrxPriceVariationModel
+   self.set_benchmark(krx_benchmark("kospi200"))
+   self.add_equity("005930", Resolution.DAILY, Market.KRX)
+   ```
+4. `lean backtest "<project>"`.
+
+Universe: `self.add_universe(KrxUniverseData, SecurityType.EQUITY, "name", Resolution.DAILY,
+Market.KRX, selector)`; rows expose `d["board"]`, `d["close"]`, `d["volume"]`,
+`d["trading_value"]`, `d["market_cap"]`, `d["shares"]`. Full examples:
+`examples/python/krx_top_market_cap/main.py` and `examples/python/krx_minute_smoke_test/main.py`.
+Beginner-level steps for Ubuntu: [BEGINNER.md](BEGINNER.md) Stage 4.
 
 ---
 

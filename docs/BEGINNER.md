@@ -5,7 +5,8 @@ It takes you from nothing to:
 
 1. **Korean stock data in your Google Drive** (no installation, about 1 day including waiting
    for approvals), and
-2. **your first backtest** on your own computer (optional, about 1 hour).
+2. **your first backtest** in Python with the LEAN CLI and Docker on your own computer
+   (optional, about 1 hour).
 
 Every step says what to click, what you should see and what to do if it goes wrong. If you
 want the technical details, read [GUIDE.md](GUIDE.md) after this.
@@ -47,6 +48,9 @@ yet.
 | Adjusted price | Past prices recalculated so splits and dividends don't look like crashes. |
 | Backtest | Running a trading rule on past data to see how it would have done. |
 | Daily / minute bar | One row of OHLCV for one day / one minute. |
+| Docker | A program that runs other software in a ready-made "container", so you don't install it yourself. |
+| LEAN CLI | The `lean` command (`pip install lean`) that runs LEAN in Docker for you. |
+| Workspace | The folder made by `lean init`: your projects plus a `data/` folder LEAN reads. |
 
 ---
 
@@ -174,82 +178,89 @@ Things to know:
 
 ## Stage 4 — Your first backtest (optional, on your own computer, about 1 hour)
 
-LEAN runs on Windows, macOS or Linux. You need about 3 GB of free disk space.
+You'll run backtests in **Python** with the **LEAN CLI**: a small program that runs LEAN for you
+inside a **Docker** container (a ready-made box with LEAN and Python in it). You never build
+LEAN or touch C#. The steps are for **Ubuntu**; macOS and Windows work the same once Docker
+Desktop is installed.
 
-### 4.1 Install three programs
+You need **a lot of free disk space** for LEAN's Docker image (tens of GB) plus a few GB for the
+data.
 
-1. **Git** — <https://git-scm.com/downloads> (Windows: keep all default options).
-2. **Python 3.10 or newer** — <https://www.python.org/downloads/> (Windows: tick
-   **Add python.exe to PATH** on the first installer screen).
-3. **.NET 10 SDK** — <https://dotnet.microsoft.com/download> → .NET 10 → **SDK** for your system.
+### 4.1 Install Docker, Python and the LEAN CLI
 
-Open a terminal (Windows: **PowerShell**; macOS: **Terminal**) and check:
+1. **Docker.** Follow <https://docs.docker.com/engine/install/ubuntu/>, then let your user run it
+   without `sudo` and check it works:
+   ```bash
+   sudo usermod -aG docker $USER      # then log out and back in
+   docker run hello-world             # should print "Hello from Docker!"
+   ```
+2. **Python and git** (Ubuntu usually has Python already):
+   ```bash
+   sudo apt install -y python3 python3-pip python3-venv git
+   ```
+3. **The LEAN CLI**, in its own Python environment:
+   ```bash
+   python3 -m venv ~/lean-env
+   source ~/lean-env/bin/activate     # run this again in every new terminal
+   pip install lean
+   lean --version
+   ```
 
-```bash
-git --version
-python --version        # on macOS/Linux it may be: python3 --version
-dotnet --list-sdks      # should show 10.0.something
-```
-
-If one says "not found", restart the terminal (or the computer) and try again.
-
-### 4.2 Download LEAN and this project, and build LEAN
-
-Copy these lines one at a time into the terminal. Use a folder you can find again, e.g. your
-home folder.
-
-```bash
-git clone --depth 1 https://github.com/QuantConnect/Lean.git
-git clone https://github.com/pinjoy99/qc-krx.git
-```
-
-The second command asks for your GitHub user name and a password: paste your **GitHub token**
-from 1.3 as the password (nothing appears while you paste; press Enter).
+### 4.2 Make a LEAN workspace
 
 ```bash
-cd Lean
-dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release
-cd ..
+mkdir ~/lean-workspace && cd ~/lean-workspace
+lean init                              # asks you to log in to a free QuantConnect account if needed
 ```
 
-This takes 2–10 minutes. **"Build succeeded"** at the end means it worked (many yellow
-"warning" lines are normal).
+This creates `lean.json` and a `data/` folder. The first backtest also downloads LEAN's Docker
+image, which takes a while once.
 
-### 4.3 Put the KRX data into LEAN
+*Already have a workspace from `lean init`? Use it and skip this step.*
 
-1. From Google Drive, download `qc-krx-data/lean.zip` into the folder that contains `Lean` and
-   `qc-krx`.
-2. Make a folder called `krxdata` there and unzip `lean.zip` into it. You should now have
-   `krxdata/lean/equity/krx/daily/…`.
-3. Install it into LEAN:
+### 4.3 Put the KRX data into the workspace
 
-```bash
-cd qc-krx
-python -m pip install -r requirements.txt
-python -m qc_krx --root ../krxdata lean-install ../Lean/Data
-cd ..
-```
-
-You should see a line ending with `holidays: … from LEAN …`.
+1. Get this project's code (it asks for your GitHub user name and password: paste your **GitHub
+   token** from 1.3 as the password; nothing appears while you paste):
+   ```bash
+   cd ~
+   git clone https://github.com/pinjoy99/qc-krx.git
+   source ~/lean-env/bin/activate     # the environment from 4.1
+   pip install -r qc-krx/requirements.txt
+   ```
+2. From Google Drive, download `qc-krx-data/lean.zip`, then unzip it into a folder called
+   `krxdata`, so that you have `~/krxdata/lean/equity/krx/daily/…`:
+   ```bash
+   mkdir -p ~/krxdata && unzip ~/Downloads/lean.zip -d ~/krxdata
+   ```
+3. Install it into your workspace's `data/` folder:
+   ```bash
+   cd ~/qc-krx
+   python -m qc_krx --root ~/krxdata lean-install ~/lean-workspace/data
+   ```
+   You should see a line ending with `holidays: … from LEAN …`. This copies the KRX prices,
+   corporate-action adjustments, universe files and KOSPI indices into `data/`, and teaches LEAN
+   KRX's trading hours, holidays and the won currency.
 
 ### 4.4 Run the example strategy
 
-The example buys the 20 biggest KOSPI companies, in equal amounts, and rebalances every month
-from 2011, paying Korean fees and taxes.
+The example buys the 20 biggest KOSPI companies in equal amounts and rebalances every month
+from 2011, paying Korean commissions and taxes.
 
 ```bash
-cp qc-krx/examples/KrxModels.cs qc-krx/examples/KrxTopMarketCapAlgorithm.cs Lean/Algorithm.CSharp/
-cd Lean
-dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release
-cd Launcher/bin/Release
-dotnet QuantConnect.Lean.Launcher.dll --algorithm-type-name KrxTopMarketCapAlgorithm --algorithm-language CSharp --algorithm-location QuantConnect.Algorithm.CSharp.dll --data-folder ../../../Data/ --close-automatically true
+cd ~/lean-workspace
+lean project-create --language python "KRX Top Market Cap"
+cp ~/qc-krx/examples/python/krx_models.py "KRX Top Market Cap/"
+cp ~/qc-krx/examples/python/krx_top_market_cap/main.py "KRX Top Market Cap/main.py"
+lean backtest "KRX Top Market Cap"
 ```
 
-On Windows PowerShell, use this instead of the first (`cp`) line:
-`copy qc-krx\examples\KrxModels.cs, qc-krx\examples\KrxTopMarketCapAlgorithm.cs Lean\Algorithm.CSharp\`.
-On macOS/Linux, if `python` isn't found, type `python3` instead.
+The project folder now holds two files: `main.py` (the strategy) and `krx_models.py` (the
+Korean market rules: fees and taxes, price steps, the daily stock list and the KOSPI 200
+benchmark). That's all a KRX project needs.
 
-It runs in about a minute. At the end LEAN prints **STATISTICS** lines. Look for:
+The backtest takes several minutes. At the end LEAN prints **STATISTICS** lines (they're also
+saved under `KRX Top Market Cap/backtests/`). Look for:
 
 | Line | What it means | Reference result |
 |---|---|---|
@@ -258,14 +269,51 @@ It runs in about a minute. At the end LEAN prints **STATISTICS** lines. Look for
 | `Sharpe Ratio` | Return per unit of risk (higher is better) | about 0.20 |
 | `Total Fees` | Commissions and taxes paid | about ₩44.7M on ₩1B |
 
-Your numbers can differ slightly if your data is newer. **This is a test of the setup, not an
-investment recommendation.**
+The reference results come from the C# version of this strategy; the Python version uses the
+same rules (its full 2011–2026 run hasn't been compared yet).
 
-### 4.5 Try your own idea
+The first lines of the log show `CHECK tax …` and `CHECK tick …`: the tax rates and price steps
+the model uses on known dates. Your numbers can differ slightly if your data is newer. **This is
+a test of the setup, not an investment recommendation.**
 
-Open `Lean/Algorithm.CSharp/KrxTopMarketCapAlgorithm.cs` in any text editor, change something
-small (for example `20` to `10` stocks), save, and run the two `dotnet` commands of 4.4 again.
-GUIDE.md section 5.6 lists the settings every KRX algorithm needs.
+### 4.5 Write your own strategy
+
+Start every KRX strategy from these lines in `main.py` (with `krx_models.py` next to it):
+
+```python
+from AlgorithmImports import *
+from krx_models import KrxBoards, krx_initialize, krx_benchmark
+
+
+class MyKrxStrategy(QCAlgorithm):
+    def initialize(self):
+        self.set_time_zone("Asia/Seoul")      # KRX time
+        self.set_account_currency("KRW")      # account in won
+        self.set_start_date(2020, 1, 1)
+        self.set_cash(100_000_000)            # ₩100M
+        boards = KrxBoards.load()             # which code is KOSPI / ETF
+        self.set_security_initializer(lambda s: krx_initialize(s, boards))   # fees, taxes, price steps
+        self.set_benchmark(krx_benchmark("kospi200"))                       # compare with KOSPI 200
+        self.samsung = self.add_equity("005930", Resolution.DAILY, Market.KRX).symbol
+
+    def on_data(self, data):
+        if not self.portfolio.invested:
+            self.set_holdings(self.samsung, 0.9)
+```
+
+Rules to remember:
+- Always pass **`Market.KRX`** and the 6-character code (`"005930"`, `"069500"`).
+- Keep `krx_initialize` — without a fee model LEAN refuses the first KRX order
+  (`unexpected equity Market krx`).
+- Use `krx_benchmark("kospi200")`, not `set_benchmark("…")` with a symbol: the KRX index data is
+  daily and LEAN would show an empty benchmark.
+- Prices are adjusted for splits and dividends automatically.
+- **Minute data** (Samsung, SK hynix, KODEX 200, last ~4 weeks): use
+  `self.add_equity(code, Resolution.MINUTE, Market.KRX, fill_forward=False)` and don't trade after
+  14:59. `examples/python/krx_minute_smoke_test/main.py` is a ready example (set its dates to the
+  last weeks).
+
+Run it with `lean backtest "<project name>"` as above.
 
 ---
 
@@ -275,7 +323,7 @@ GUIDE.md section 5.6 lists the settings every KRX algorithm needs.
 |---|---|---|
 | Every trading day or week | Open your notebook copy → **Run all** (5–10 minutes) | Adds the new days. KRX publishes a day's data the next afternoon, so run it after lunch. |
 | **At least every 3 weeks** | The same | Yahoo keeps 1-minute prices for only ~4 weeks. If you wait longer, the missed minutes are gone for good. |
-| After each update you want in LEAN | Download the new `lean.zip` and repeat 4.3 | LEAN reads its own copy of the data. |
+| After each update you want in LEAN | Download the new `lean.zip`, unzip it over `~/krxdata` and run the `lean-install` command of 4.3 again | LEAN reads its own copy in the workspace's `data/` folder. |
 
 ---
 
@@ -298,7 +346,8 @@ GUIDE.md section 5.6 lists the settings every KRX algorithm needs.
 
 ## FAQ
 
-**Do I have to pay for anything?** No. All keys, Colab, Drive (the data fits in the free 15 GB) and LEAN are free.
+**Do I have to pay for anything?** No. All keys, Colab, Drive (the data fits in the free 15 GB),
+the LEAN CLI and local backtests are free.
 
 **Does the notebook download everything every time?** No. It only downloads days it doesn't have.
 
@@ -311,6 +360,16 @@ is already in Drive. Run all again and it continues.
 
 **Can I use this on QuantConnect's website?** No. Their cloud can't read your own data folder;
 use LEAN on your computer as in Stage 4.
+
+**Do I need C#?** No. Everything in this guide is Python. (The project also has C# versions of
+the examples, and GUIDE.md Part 5 builds LEAN from source; you don't need either.)
+
+**`lean backtest` says it can't find `krx_models`.** Copy `krx_models.py` into the same project
+folder as `main.py`.
+
+**LEAN says `unexpected equity Market krx` or can't find market hours for `Equity-krx`.** The
+fee model isn't set (keep `krx_initialize`) or `lean-install` wasn't run on this workspace's
+`data/` folder (4.3).
 
 **Where do I find more detail?** [GUIDE.md](GUIDE.md) (full step-by-step guide),
 [AUDIT.md](AUDIT.md) (where every number comes from), [COMPONENTS.md](COMPONENTS.md) (how the
