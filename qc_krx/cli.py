@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import logging
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from qc_krx.client import Client
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="qc_krx", description="KRX data for QuantConnect LEAN: KOSPI stocks and ETFs from the KRX Open API "
-                                "(daily), Yahoo Finance (minute bars), with aikstockdata.com and Yahoo as cross-checks")
+                                "(daily) and data.go.kr, with aikstockdata.com and Yahoo Finance as cross-checks")
     p.add_argument("--root", type=Path, default=Path("data"), help="output directory (default: data)")
     p.add_argument("--interval", type=float, default=0.1, help="min seconds between requests (default: 0.1)")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -55,20 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     rg.add_argument("--max-age-days", type=float, default=7, help="skip if the saved copy is newer (default: 7)")
     rg.add_argument("--force", action="store_true", help="download even if the saved copy is recent")
 
-    for name, what in (("yahoo-minute", "1-minute bars from Yahoo for LEAN tests (few codes, last 28 days)"),
-                       ("yahoo-daily", "daily bars from Yahoo, only to check the KRX data (`verify`)")):
-        y = sub.add_parser(name, help=what)
-        y.add_argument("codes", nargs="*", help="6-digit KOSPI stock or ETF codes" + (
-            f" (default: {' '.join(yahoo.DEFAULT_MINUTE_CODES)}; at most {yahoo.MAX_MINUTE_CODES})"
-            if name == "yahoo-minute" else ""))
-        y.add_argument("--top", type=int, default=0, help="add the N largest KOSPI stocks by market cap (needs raw/krx)")
-        y.add_argument("--min-interval", type=float, default=2.0, help="seconds between Yahoo requests (default: 2, plus up to 1 s jitter)")
-        y.add_argument("--max-requests", type=int, default=600, help="stop after this many requests (default: 600); re-run to resume")
-        if name == "yahoo-minute":
-            y.add_argument("--keep-days", type=int, default=yahoo.MINUTE_KEEP_DAYS,
-                           help="delete minute files older than this many days (default: %(default)s; 0 = keep all)")
-        if name == "yahoo-daily":
-            y.add_argument("--start", default="2020-01-01", help="first date YYYY-MM-DD (default: 2020-01-01)")
+    y = sub.add_parser("yahoo-daily", help="daily bars from Yahoo, only to check the KRX data (`verify`)")
+    y.add_argument("codes", nargs="*", help="6-digit KOSPI stock or ETF codes")
+    y.add_argument("--top", type=int, default=0, help="add the N largest KOSPI stocks by market cap (needs raw/krx)")
+    y.add_argument("--start", default="2020-01-01", help="first date YYYY-MM-DD (default: 2020-01-01)")
+    y.add_argument("--min-interval", type=float, default=2.0, help="seconds between Yahoo requests (default: 2, plus up to 1 s jitter)")
+    y.add_argument("--max-requests", type=int, default=600, help="stop after this many requests (default: 600); re-run to resume")
 
     sub.add_parser("verify", help="compare KRX daily data with aikstockdata / Yahoo files on disk; writes reports/")
 
@@ -148,12 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         build.build(root, lean=not args.no_lean, market=args.market)
     elif args.cmd == "lean-install":
         lean_install.install(root, args.lean_data, market=args.market)
-    elif args.cmd in ("yahoo-minute", "yahoo-daily"):
+    elif args.cmd == "yahoo-daily":
         codes = list(dict.fromkeys(args.codes + (yahoo.top_codes(root, args.top) if args.top else [])))
-        if not codes and args.cmd == "yahoo-minute":
-            codes = list(yahoo.DEFAULT_MINUTE_CODES)
-        if args.cmd == "yahoo-minute" and len(codes) > yahoo.MAX_MINUTE_CODES:
-            p.error(f"{len(codes)} codes: minute data is limited to {yahoo.MAX_MINUTE_CODES} codes (storage)")
         if not codes:
             p.error("give codes and/or --top N")
         markets = yahoo.known_markets(root)
@@ -162,11 +151,6 @@ def main(argv: list[str] | None = None) -> int:
             p.error(f"out of scope (only KOSPI stocks and ETFs): {', '.join(out_of_scope)}")
         pacer = yahoo.Pacer(min_interval=args.min_interval, max_requests=args.max_requests)
         try:
-            if args.cmd == "yahoo-minute":
-                stats = yahoo.scrape_minute(root, codes, markets, pacer)
-                yahoo.prune_minute(root, args.keep_days)
-                return 1 if stats["failed"] else 0
-            import datetime as dt
             yahoo.scrape_daily(root, codes, dt.date.fromisoformat(args.start), markets, pacer)
         except yahoo.Stopped:
             return 1

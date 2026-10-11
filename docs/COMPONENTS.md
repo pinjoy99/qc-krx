@@ -7,17 +7,15 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 - 시장: **KOSPI 주식과 ETF만**. KOSDAQ·KONEX·NXT(대체거래소)는 이번 단계에서 다루지 않습니다
   (코드는 남겨 두지만 기본값에서 빠지고 검증하지 않음).
 - 일봉: **KRX Open API가 유일한 소스**. aikstockdata.com과 Yahoo 일봉은 **검증용**(`verify`)으로만 씁니다.
-- 분봉: **Yahoo Finance(yfinance)가 유일한 소스**. LEAN 코드·전략 테스트용이며, 용량 때문에
-  **소수 종목(기본 3개, 최대 20개)·최근 28일**로 제한합니다. Yahoo의 봇 차단·호출 제한을 지킵니다
-  (요청 1건씩 2~3초 간격, 429 응답 시 대기 후 중단·재개).
+- 분봉: **없음.** Yahoo 분봉을 한때 넣었다가, 15:00 이후 누락·거래량 급증·호가단위 밖 가격·28일 제한
+  때문에 **더 나은 소스가 생길 때까지 프로젝트에서 뺐습니다** (2026-10-11).
 
 ```
             ┌──────────────────────────┐
  KRX Open API ─┐ (일봉)                  │  파일 (LEAN Data 폴더)
- data.go.kr ───┤                         │
- Yahoo ────────┼─▶ qc-krx-data ──────────┼─▶ equity/krx/{daily, minute, factor_files, map_files, universe}
- (분봉)        │   (데이터 파이프라인)     │   index/krx/daily, securities.csv
- aikstockdata ─┘ (검증용)                 │
+ data.go.kr ───┼─▶ qc-krx-data ──────────┼─▶ equity/krx/{daily, factor_files, map_files, universe}
+ Yahoo ────────┤   (데이터 파이프라인)     │   index/krx/daily, securities.csv
+ aikstockdata ─┘  (검증용)                │
                                           │
                    qc-krx-market ◀────────┘  (시장 정의·현실 모델: 데이터를 읽어 LEAN이 KRX를 "이해"하게 함)
                    (시장 정의·모델)
@@ -48,11 +46,11 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 | `qc_krx/krx_api.py` | KRX Open API: 일별 시세(범위: KOSPI·ETF; KOSDAQ·KONEX 코드는 보존), 지수, 종목기본정보 |
 | `qc_krx/dividends.py` | data.go.kr 배당 정보 → `dividends.csv` |
 | `qc_krx/rights.py` | data.go.kr 권리일정(분할·증자·합병·상호변경…) → `corporate_actions.csv` |
-| `qc_krx/yahoo.py` | Yahoo Finance: 분봉(유일한 소스, 소수 종목·28일) → LEAN 분봉 파일, 검증용 일봉. 호출 간격·429 대기·요청 한도 |
-| `qc_krx/verify.py` | KRX 일봉을 aikstockdata·Yahoo와 대조, Yahoo 분봉 점검 → `reports/verify_*.csv` |
+| `qc_krx/yahoo.py` | Yahoo Finance 검증용 일봉. 호출 간격·429 대기·요청 한도 |
+| `qc_krx/verify.py` | KRX 일봉을 aikstockdata·Yahoo와 대조 → `reports/verify_*.csv` |
 | `qc_krx/scraper.py` | aikstockdata.com (검증용) |
 | `qc_krx/client.py` | HTTP 공통 처리(재시도, 속도 제한, ETag) |
-| `qc_krx/build.py` | KRX 원본 → `ohlcv/`, LEAN 일봉 zip, `securities.csv`, `index/`; LEAN 분봉 zip |
+| `qc_krx/build.py` | KRX 원본 → `ohlcv/`, LEAN 일봉 zip, `securities.csv`, `index/` |
 | `qc_krx/factors.py` | LEAN factor file(분할·증자 권리락·배당), map file(상장·폐지일) |
 | `qc_krx/lean_extras.py` | LEAN용 지수 파일(KOSPI, KOSPI200), 일별 universe 파일, `securities.csv` 복사 |
 | `qc_krx/cli.py` | `python -m qc_krx <명령>` |
@@ -63,12 +61,12 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 
 | WBS | 항목 | 상태 | 내용 |
 |---|---|---|---|
-| 3.1 | 수집기 | 🟡 | 일봉: KOSPI·ETF 2010~2026 완료(상장폐지 종목 포함). 분봉: Yahoo, 소수 종목·최근 28일, 09:00–14:59만 있음. 틱 없음. KOSDAQ·KONEX·NXT는 범위 밖 |
-| 3.2 | LEAN 포맷 변환기 | ✅ | 일봉·분봉 zip(가격 ×10,000) |
+| 3.1 | 수집기 | 🟡 | 일봉: KOSPI·ETF 2010~2026 완료(상장폐지 종목 포함). 분봉·틱 없음(Yahoo 분봉은 품질 문제로 제외). KOSDAQ·KONEX·NXT는 범위 밖 |
+| 3.2 | LEAN 포맷 변환기 | ✅ | 일봉 zip(가격 ×10,000) |
 | 3.3 | Map File | 🟡 | 상장일·폐지일. 종목코드 변경·합병 이력은 없음 |
 | 3.4 | Factor File | ✅ | KRX 기준가 조정비율(분할·병합·무상/유상증자·감자) + 현금배당. 시장 전체 검증(조정일 이상치 634 → 7) |
 | 3.5 | Fundamental / Universe | 🟡 | 일별 시총·거래대금·상장주식수 universe 파일. 관리종목·업종 플래그 없음 |
-| 3.6 | 데이터 QA·대사 | 🟡 | `verify`: aikstockdata 일봉 21,972건 KRX와 완전 일치, Yahoo 일봉·분봉 점검. 기준 초과 시 경고·실패 처리는 없음 |
+| 3.6 | 데이터 QA·대사 | 🟡 | `verify`: aikstockdata 일봉 21,972건 KRX와 완전 일치, Yahoo 일봉 대조. 기준 초과 시 경고·실패 처리는 없음 |
 | 2.4 | 벤치마크 데이터 | ✅ | KOSPI·KOSPI200 지수(LEAN 형식). KOSDAQ 지수는 승인 대기 |
 | — | 배당·권리일정 | ✅ | data.go.kr 두 API, 매일·매주 갱신 |
 | — | 운영 | 🟡 | Colab 1회 실행 약 5분+. 자동 스케줄 없음 |
@@ -82,7 +80,7 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 - 관리종목·투자경고·거래정지·업종 플래그 (KRX 정보데이터시스템 / KIND)
 - Colab 빌드 속도: 연도별 묶음 저장, universe 파일 Drive 보존
 - 매일 자동 실행 (KRX 데이터 공개 시각 확인 후)
-- 긴 분봉 이력·15:00–15:30 구간이 필요해지면 다른 소스 (기획안 §9: KIS API, 데이터 구매)
+- 분봉 데이터: 더 나은 소스 확보 후 다시 추가 (기획안 §9: KIS API, 데이터 구매)
 - 운영 단계: 정식 라이선스 데이터(KRX Data Marketplace / KOSCOM)
 
 ---
@@ -103,7 +101,7 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 | `examples/KrxModels.cs` | `KrxFeeModel`(수수료+거래세+농특세, 결제일 기준), `KrxPriceVariationModel`(호가단위, 2023 개편 전후), `KrxUniverseData`(시총 universe), `KrxIndex`(일봉 벤치마크), `KrxBoards`(종목→시장) |
 | `examples/KrxTopMarketCapAlgorithm.cs` | 전략 백테스트: KOSPI 시총 상위 20, 월간 리밸런싱, 2011~2026 |
 | `examples/KrxSmokeTest.cs` | 데이터 검증용 테스트(분할·배당·상장폐지 이벤트) |
-| `examples/KrxMinuteSmokeTest.cs` | 분봉 테스트: 09:30 매수·14:30 매도, 하루 360봉(09:00–14:59) 확인, `fillForward: false` |
+| `examples/python/krx_models.py`, `examples/python/krx_top_market_cap/main.py` | 같은 모델·전략의 Python 버전 (LEAN CLI + Docker용; `main.py` 옆에 `krx_models.py`만 두면 됨) |
 | `tests/test_lean_install.py` | 설치기 테스트 (C# 모델은 LEAN 실행으로 검증) |
 
 ### 상태
@@ -130,7 +128,6 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 - 4.4 T+2 결제(매도 대금 사용 시점)
 - 4.5 KrxBrokerageModel: 지원 주문유형, 호가단위 위반 주문 처리, 공매도 규정
 - 2.1 수능일·연초 지연 개장 (NXT 세션은 범위 확대 시)
-- 분봉 백테스트 규칙: 15:00 이후 데이터 없음 → 종가 주문(MOC) 미지원 명시 또는 일봉 종가로 처리하는 체결 모델
 - LEAN "Estimated Strategy Capacity ₩0" 원인 조사
 - Python 버전 모델 + LEAN Python 환경 테스트
 - 업스트림 기여(7.3): `Equity-krx` 시장 정의·KRX 모델을 QuantConnect/Lean에 PR

@@ -1,31 +1,18 @@
-"""Yahoo Finance (via the ``yfinance`` package): the only source of minute bars, and a
-cross-check for the KRX daily data.
+"""Yahoo Finance (via the ``yfinance`` package): daily bars used only to cross-check the KRX
+daily data (``yahoo-daily`` then ``verify``). They never go into the LEAN files.
 
-Role in the project (see docs/AUDIT.md):
-
-* **Minute bars** for LEAN code and strategy testing. Nothing else in the pipeline provides
-  intraday data. To keep storage small, minute data is limited to a few codes (default
-  DEFAULT_MINUTE_CODES, at most MAX_MINUTE_CODES) and to the last MINUTE_KEEP_DAYS days, which
-  is also about all Yahoo keeps (1-minute bars for ~28 days); older files are deleted.
-* **Daily bars** are downloaded only to verify the KRX Open API data (``verify`` command);
-  they never go into the LEAN daily files.
-
-What Yahoo's KRX minute bars are (measured 2026-10, see docs/AUDIT.md §3):
-
-* 09:00-14:59 only: the last 30 minutes of the session (15:00-15:20 continuous trading and the
-  15:20-15:30 closing auction) are missing, so the minute volume is ~70-85% of the day's volume
-  and the last minute close is not the official close.
-* Some prices are not on the KRX tick grid, so they are not all trade prices.
+Minute bars were removed from the project on 2026-10-11 until a better source is available
+(Yahoo's KRX minute bars stop at 14:59, have volume spikes and off-tick prices, and only cover
+~28 days; see docs/AUDIT.md).
 
 Yahoo has no official API. ``yfinance`` (>= 0.2.54) gets past Yahoo's bot protection by
 impersonating a browser (curl_cffi); Yahoo still answers bursts with HTTP 429. So this module
-sends one request at a time with a minimum interval plus random jitter, backs off on 429,
-stops the run after repeated 429s or a request budget (progress is kept; re-run to resume),
-and never re-requests a day already on disk.
+sends one request at a time with a minimum interval plus random jitter, backs off on 429, and
+stops the run after repeated 429s or a request budget.
 
-Raw files: ``raw/yahoo/minute/{code}/{yyyyMMdd}.csv.gz`` (``time,open,high,low,close,volume``,
-time = bar start HH:MM KST; an empty file marks a day Yahoo has no bars for),
-``raw/yahoo/daily/{code}.csv`` and ``raw/yahoo/fetch_log.csv`` (every request, for the audit).
+Raw files: ``raw/yahoo/daily/{code}.csv`` and ``raw/yahoo/fetch_log.csv`` (every request, for
+the audit). Note: Yahoo's daily open/high/low/close are split-adjusted even with
+``auto_adjust=False``.
 """
 
 from __future__ import annotations
@@ -33,29 +20,15 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import gzip
-import io
 import logging
-import os
 import random
 import time
-import zipfile
 from pathlib import Path
 from typing import Callable, Iterable
 
 log = logging.getLogger(__name__)
 
 KST = dt.timezone(dt.timedelta(hours=9))
-# Yahoo serves 1-minute bars for the last ~30 days, at most 8 days per request (both
-# measured 2026-10: 28 days back worked, 29 did not; 8-day spans worked, 9 did not).
-MINUTE_LOOKBACK_DAYS = 28
-MINUTE_CHUNK_DAYS = 7
-# Regular session; Yahoo's bars are kept only inside it.
-SESSION_START, SESSION_END = dt.time(9, 0), dt.time(15, 30)
-# Minute data is kept small on purpose (storage): a few codes and a limited date range.
-DEFAULT_MINUTE_CODES = ("005930", "000660", "069500")  # Samsung Electronics, SK hynix, KODEX 200
-MAX_MINUTE_CODES = 20
-# Days of minute files kept (raw and LEAN); older ones are deleted. Same as Yahoo's window by default.
-MINUTE_KEEP_DAYS = MINUTE_LOOKBACK_DAYS
 # KRX markets in the project's current scope. KOSPI stocks and ETFs both trade as .KS on Yahoo.
 SUFFIX = {"KOSPI": ".KS", "ETF": ".KS"}
 
@@ -155,119 +128,16 @@ def _log_fetch(root: Path, symbol: str, interval: str, start: dt.date, end: dt.d
                     start.isoformat(), end.isoformat(), status, rows, yf_version])
 
 
-def minute_path(root: Path, code: str, date: str) -> Path:
-    return root / "raw" / "yahoo" / "minute" / code / f"{date}.csv.gz"
-
-
-def write_minute_day(path: Path, bars: list[Bar]) -> None:
-    buf = io.StringIO()
-    buf.write("time,open,high,low,close,volume\n")
-    for t, o, h, l, c, v in bars:
-        buf.write(f"{t:%H:%M},{_num(o)},{_num(h)},{_num(l)},{_num(c)},{v}\n")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    with gzip.open(tmp, "wt", encoding="utf-8", newline="") as f:
-        f.write(buf.getvalue() if bars else "")
-    os.replace(tmp, path)
-
-
-def read_minute_day(path: Path) -> list[dict]:
-    with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
-
-
 def symbol_for(code: str, market: str = "KOSPI") -> str:
     if market not in SUFFIX:
         raise YahooError(f"{code}: market {market!r} is out of scope (only {', '.join(SUFFIX)})")
     return code + SUFFIX[market]
 
 
-def missing_days(root: Path, code: str, first: dt.date, last: dt.date) -> list[dt.date]:
-    """Weekdays in [first, last] with no file on disk yet (holidays are learned from Yahoo
-    and stored as empty files, so they are requested once)."""
-    out, d = [], first
-    while d <= last:
-        if d.weekday() < 5 and not minute_path(root, code, d.strftime("%Y%m%d")).exists():
-            out.append(d)
-        d += dt.timedelta(days=1)
-    return out
-
-
-def scrape_minute(root: Path, codes: Iterable[str], markets: dict[str, str] | None = None,
-                  pacer: Pacer | None = None, fetch: Callable = yfinance_fetch,
-                  today: dt.date | None = None) -> dict:
-    """Download the 1-minute bars Yahoo still has for each code and every finished day not on
-    disk. Raises Stopped (after saving what it got) when Yahoo keeps rate limiting or the
-    request budget is used up."""
-    codes = list(codes)
-    if len(codes) > MAX_MINUTE_CODES:
-        raise YahooError(f"{len(codes)} codes: minute data is limited to {MAX_MINUTE_CODES} codes")
-    pacer = pacer or Pacer()
-    markets = markets or {}
-    today = today or dt.datetime.now(KST).date()
-    first, last = today - dt.timedelta(days=MINUTE_LOOKBACK_DAYS - 1), today - dt.timedelta(days=1)
-    stats = {"codes": 0, "requests": 0, "days": 0, "empty_days": 0, "failed": 0}
-    for code in codes:
-        stats["codes"] += 1
-        symbol = symbol_for(code, markets.get(code, "KOSPI"))
-        todo = missing_days(root, code, first, last)
-        while todo:
-            start = todo[0]
-            end = min(start + dt.timedelta(days=MINUTE_CHUNK_DAYS), last + dt.timedelta(days=1))
-            chunk = [d for d in todo if d < end]
-            todo = [d for d in todo if d >= end]
-            try:
-                bars = pacer.call(lambda: fetch(symbol, start, end, "1m"))
-            except YahooError as e:
-                if isinstance(e, Stopped):
-                    log.warning("yahoo: stopping after %d requests (%s); re-run later to resume", pacer.requests, e)
-                    raise
-                log.error("yahoo: %s", e)
-                _log_fetch(root, symbol, "1m", start, end, "error", 0)
-                stats["failed"] += 1
-                continue
-            stats["requests"] += 1
-            _log_fetch(root, symbol, "1m", start, end, "ok", len(bars))
-            by_day: dict[dt.date, list[Bar]] = {}
-            for b in bars:
-                if SESSION_START <= b[0].time() < SESSION_END:
-                    by_day.setdefault(b[0].date(), []).append(b)
-            latest = max(by_day, default=None)
-            for d in chunk:
-                if d in by_day:
-                    write_minute_day(minute_path(root, code, d.strftime("%Y%m%d")), sorted(by_day[d]))
-                    stats["days"] += 1
-                elif latest is not None and d < latest:
-                    # Yahoo has later bars but none for this day: a holiday or a trading halt.
-                    write_minute_day(minute_path(root, code, d.strftime("%Y%m%d")), [])
-                    stats["empty_days"] += 1
-    log.info("yahoo minute: %(codes)d codes, %(requests)d requests, %(days)d days saved, "
-             "%(empty_days)d days without bars, %(failed)d failed requests", stats)
-    return stats
-
-
-def prune_minute(root: Path, keep_days: int = MINUTE_KEEP_DAYS, today: dt.date | None = None) -> int:
-    """Delete raw minute files older than ``keep_days`` (0 keeps everything); LEAN minute files
-    follow the raw ones at the next build."""
-    if keep_days <= 0:
-        return 0
-    today = today or dt.datetime.now(KST).date()
-    cutoff = (today - dt.timedelta(days=keep_days)).strftime("%Y%m%d")
-    n = 0
-    for path in (root / "raw" / "yahoo" / "minute").glob("*/*.csv.gz"):
-        if path.name[:8] < cutoff:
-            path.unlink()
-            n += 1
-    if n:
-        log.info("yahoo minute: deleted %d day files older than %d days", n, keep_days)
-    return n
-
-
 def scrape_daily(root: Path, codes: Iterable[str], start: dt.date, markets: dict[str, str] | None = None,
                  pacer: Pacer | None = None, fetch: Callable = yfinance_fetch,
                  today: dt.date | None = None) -> int:
-    """Daily bars from ``start`` for verification only (raw/yahoo/daily/{code}.csv).
-    Note: Yahoo's daily Open/High/Low/Close are split-adjusted even with auto_adjust=False."""
+    """Daily bars from ``start`` for verification only (raw/yahoo/daily/{code}.csv)."""
     pacer = pacer or Pacer()
     markets = markets or {}
     end = (today or dt.datetime.now(KST).date())  # exclusive: today's bar may be unfinished
@@ -316,40 +186,3 @@ def known_markets(root: Path) -> dict[str, str]:
                 out.update({c: market_dir.name for c in codes})
                 break
     return out
-
-
-def build_lean_minute(root: Path, market: str = "krx") -> int:
-    """LEAN minute trade files from raw/yahoo/minute:
-    ``lean/equity/{market}/minute/{code}/{yyyyMMdd}_trade.zip`` holding
-    ``{yyyyMMdd}_{code}_minute_trade.csv`` with ``ms since midnight,o,h,l,c,v`` (prices x 10,000,
-    times in the data time zone Asia/Seoul, bar start). Only new or changed days are rewritten;
-    files whose raw day is gone (see prune_minute) are deleted."""
-    src_root = root / "raw" / "yahoo" / "minute"
-    lean_root = root / "lean" / "equity" / market / "minute"
-    for out in lean_root.glob("*/*_trade.zip"):
-        if not (src_root / out.parent.name / f"{out.name[:8]}.csv.gz").exists():
-            out.unlink()
-    n = 0
-    for path in src_root.glob("*/*.csv.gz"):
-        code, date = path.parent.name, path.name[:8]
-        out = root / "lean" / "equity" / market / "minute" / code.lower() / f"{date}_trade.zip"
-        if out.exists() and out.stat().st_mtime >= path.stat().st_mtime:
-            continue
-        rows = read_minute_day(path)
-        if not rows:
-            continue
-        lines = []
-        for r in rows:
-            hh, mm = r["time"].split(":")
-            ms = (int(hh) * 60 + int(mm)) * 60_000
-            o, h, l, c = (round(float(r[k]) * 10000) for k in ("open", "high", "low", "close"))
-            lines.append(f"{ms},{o},{h},{l},{c},{r['volume']}")
-        out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_suffix(".tmp")
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-            z.writestr(f"{date}_{code.lower()}_minute_trade.csv", "\n".join(lines) + "\n")
-        os.replace(tmp, out)
-        n += 1
-    if n:
-        log.info("build: wrote %d LEAN minute files", n)
-    return n

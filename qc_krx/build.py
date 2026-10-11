@@ -2,8 +2,8 @@
 
 The only source of daily bars is the KRX Open API (raw/krx, full OHLCV since 2010; the
 ``source`` column says ``krx``). aikstockdata.com and Yahoo Finance are used only to check it
-(``verify`` command, qc_krx/verify.py); Yahoo is also the source of the LEAN minute files
-(qc_krx/yahoo.py).
+(``verify`` command, qc_krx/verify.py). There is no minute data (removed 2026-10-11 until a
+better source is available).
 
 Scope: KOSPI stocks and ETFs. KOSDAQ, KONEX and NXT are out of scope for now; KRX files for
 other markets found under raw/krx are still built, with a warning.
@@ -26,7 +26,6 @@ from pathlib import Path
 from qc_krx import factors
 from qc_krx.lean_extras import build_lean_extras
 from qc_krx.dividends import build_dividends
-from qc_krx.yahoo import build_lean_minute
 from qc_krx.rights import build_corporate_actions
 
 log = logging.getLogger(__name__)
@@ -255,8 +254,10 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
         log.info("build: wrote %d indices", n_idx)
     if lean and krx_meta:
         build_lean_extras(root, market)
-    if lean:
-        build_lean_minute(root, market)
+    if lean and (lean_dir / "minute").exists():
+        # minute files from before minute data was removed (2026-10-11)
+        shutil.rmtree(lean_dir / "minute")
+        log.info("build: removed the old LEAN minute files")
     if n_div:
         log.info("build: wrote %d dividend records", n_div)
     if n_factor:

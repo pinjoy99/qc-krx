@@ -24,7 +24,7 @@ want the technical details, read [GUIDE.md](GUIDE.md) after this.
 
 - **KRX** (Korea Exchange) gives the daily prices of every stock and ETF on KOSPI since 2010.
 - **The public data portal** (data.go.kr) gives dividends and corporate events (splits etc.).
-- **Yahoo Finance** gives 1-minute prices for a few stocks, for the last 4 weeks only.
+- **Yahoo Finance** daily prices are used only to double-check the KRX prices.
 - **Google Colab** is a free Google service that runs code in your web browser. You don't
   install anything.
 - **LEAN** is free software from QuantConnect that replays history to test a trading idea
@@ -42,12 +42,12 @@ yet.
 | API key | A password that lets a program download data from a website. Keep it secret. |
 | Colab notebook | A web page with code blocks ("cells") that you run with a ▶ button. |
 | Secret (in Colab) | A safe place in Colab to store an API key so it doesn't appear on screen. |
-| OHLCV | Open, High, Low, Close price and Volume of one day (or one minute). |
+| OHLCV | Open, High, Low, Close price and Volume of one day. |
 | Ticker / code | The 6-character KRX code of a security, e.g. `005930` = Samsung Electronics. |
 | Split | A company divides each share into several (Samsung: 1 → 50 in 2018); the price drops by the same factor. |
 | Adjusted price | Past prices recalculated so splits and dividends don't look like crashes. |
 | Backtest | Running a trading rule on past data to see how it would have done. |
-| Daily / minute bar | One row of OHLCV for one day / one minute. |
+| Daily bar | One row of OHLCV for one day. |
 | Docker | A program that runs other software in a ready-made "container", so you don't install it yourself. |
 | LEAN CLI | The `lean` command (`pip install lean`) that runs LEAN in Docker for you. |
 | Workspace | The folder made by `lean init`: your projects plus a `data/` folder LEAN reads. |
@@ -308,10 +308,7 @@ Rules to remember:
 - Use `krx_benchmark("kospi200")`, not `set_benchmark("…")` with a symbol: the KRX index data is
   daily and LEAN would show an empty benchmark.
 - Prices are adjusted for splits and dividends automatically.
-- **Minute data** (Samsung, SK hynix, KODEX 200, last ~4 weeks): use
-  `self.add_equity(code, Resolution.MINUTE, Market.KRX, fill_forward=False)` and don't trade after
-  14:59. `examples/python/krx_minute_smoke_test/main.py` is a ready example (set its dates to the
-  last weeks).
+- Use **`Resolution.DAILY`**. There is no minute data for now (see below).
 
 Run it with `lean backtest "<project name>"` as above.
 
@@ -322,20 +319,15 @@ Run it with `lean backtest "<project name>"` as above.
 | How often | What | Why |
 |---|---|---|
 | Every trading day or week | Open your notebook copy → **Run all** (5–10 minutes) | Adds the new days. KRX publishes a day's data the next afternoon, so run it after lunch. |
-| **At least every 3 weeks** | The same | Yahoo keeps 1-minute prices for only ~4 weeks. If you wait longer, the missed minutes are gone for good. |
 | After each update you want in LEAN | Download the new `lean.zip`, unzip it over `~/krxdata` and run the `lean-install` command of 4.3 again | LEAN reads its own copy in the workspace's `data/` folder. |
 
 ---
 
 ## Good to know before trusting results
 
-- **Minute data is for testing code, not for research.** It's for a few stocks only (Samsung
-  Electronics, SK hynix, KODEX 200 by default), only the last 4 weeks, and Yahoo's data has gaps:
-  - **No prices after 14:59.** The market trades until 15:30 (15:00–15:20 normal trading,
-    15:20–15:30 closing auction). Don't backtest anything that trades at the close with minute
-    data.
-  - **Volumes have spikes** — sometimes one minute shows most of the day's volume.
-  - **Some prices are not real trade prices** (they don't fit KRX's price steps).
+- **Daily data only.** Minute prices were tried (from Yahoo) and removed: they stopped at 14:59
+  (the market trades until 15:30), had volume spikes and prices that weren't real trades, and only
+  went back 4 weeks. They'll come back when a better source is available.
 - **Daily data comes only from KRX** and is checked against two other sources; on the overlap it
   matched exactly (see `reports/verify_summary.csv`).
 - **About 13% of dividends** have no amount in the public data, so prices around those dates are

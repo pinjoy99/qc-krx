@@ -5,7 +5,8 @@
 [project structure](docs/COMPONENTS.md) (qc-krx-data / qc-krx-market / qc-krx-broker, 한국어)
 
 Collects Korean price data and converts it to per-security OHLCV CSVs and QuantConnect LEAN
-data (daily, and minute bars for a few codes).
+daily data. **No minute data** for now: it was removed until a better source than Yahoo is
+available (see `docs/AUDIT.md` for why).
 
 **Scope (current stage): KOSPI stocks and ETFs.** KOSDAQ, KONEX and the NXT alternative exchange
 are not covered for now. The code for the KOSDAQ/KONEX endpoints is kept, but they are not
@@ -15,7 +16,7 @@ downloaded by default, not verified, and the defaults and checks assume KOSPI/ET
 |---|---|---|
 | **KRX Open API** ([openapi.krx.co.kr](https://openapi.krx.co.kr/)) | **the only source of daily bars** | official full-market OHLCV since 2010-01-04, incl. delisted securities; free key |
 | **data.go.kr** (FSC) | dividends, corporate actions | factor files, `dividends.csv`, `corporate_actions.csv` |
-| **Yahoo Finance** (`yfinance`) | **the only source of minute bars**; daily bars as a cross-check | 1-minute bars for the last ~4 weeks, a few codes only (storage) |
+| **Yahoo Finance** (`yfinance`) | cross-check only | daily bars (split-adjusted by Yahoo) |
 | **[aikstockdata.com](https://aikstockdata.com/)** | cross-check only | close/volume since 2020, OHLCV for the last 30 days; no key |
 
 aikstockdata and Yahoo daily bars never go into the output; `python -m qc_krx verify` compares
@@ -104,41 +105,6 @@ and listed shares 128,386,494 → 6,419,324,700. `corporate_actions.csv` has one
 `ex_date`, `listing_date`, `issue_date`, `delivery_date`, `payment_date`, `dividend_pay_date`,
 `meeting_date`.
 
-## Minute bars (Yahoo Finance)
-
-Yahoo is the only source of minute bars, for LEAN code and strategy tests. To keep storage
-small, minute data is limited to **a few codes** (default 005930 Samsung Electronics, 000660 SK
-hynix, 069500 KODEX 200; at most 20) and **the last 28 days**, which is also about all Yahoo
-keeps; older files are deleted. About 5 KB per code-day, so 20 codes stay under ~3 MB.
-
-```bash
-python -m qc_krx yahoo-minute                     # default codes
-python -m qc_krx yahoo-minute 005930 069500 --keep-days 28
-python -m qc_krx build                            # also writes lean/equity/krx/minute/...
-```
-
-What the bars are (measured October 2026; details in `docs/AUDIT.md` §3):
-
-- **09:00–14:59 only** (360 bars a day). The last 30 minutes (15:00–15:20 trading and the
-  15:20–15:30 closing auction) are missing, so the minute volume is ~70–85% of the day's and the
-  last minute close isn't the official close. Use the KRX daily bars for closes.
-- Some prices are off the KRX tick grid (e.g. 264,250 for Samsung, whose tick is 500), so not
-  every price is a trade price. All highs/lows lay inside KRX's daily range.
-- Volume has spikes: on some days one minute bar holds 20–90% of the day's KRX volume, so the
-  minute volumes can add up to more than the day's. Don't use them for volume-based logic.
-- Yahoo's 5-minute and 60-minute bars also stop before 15:00, and minute data older than ~28
-  days can't be fetched later. Running `yahoo-minute` weekly keeps the 28-day window gap-free;
-  to build a longer history you would also need `--keep-days 0` (more storage), and it would
-  still lack 15:00–15:30.
-- Raw (unadjusted) prices in KST, bar start times; LEAN applies the same factor files as daily.
-
-Yahoo has no official API and blocks bots and bursts (HTTP 429). `yfinance` >= 0.2.54 passes
-the bot check by impersonating a browser; on top of that this project sends one request at a
-time, 2 s apart plus up to 1 s of random jitter (`--min-interval`), waits 60/180/600 s after a
-429, stops after a fourth 429 in a row or `--max-requests` (default 600), and never requests a
-day already on disk. Each request is logged in `raw/yahoo/fetch_log.csv`. A stopped run keeps
-what it got; run it again later.
-
 ## Verification (aikstockdata and Yahoo)
 
 ```bash
@@ -149,11 +115,15 @@ python -m qc_krx verify                           # -> data/reports/verify_*.csv
 ```
 
 `verify` compares every stock-day the other source has with KRX (`verify_summary.csv`,
-`verify_mismatches.csv`) and checks each Yahoo minute day against the KRX daily bar
-(`verify_minute.csv`: bars, first/last time, open = KRX open, inside KRX's range, volume ratio,
-off-tick prices). Note that Yahoo's daily open/high/low/close are split-adjusted (and adjusted
+`verify_mismatches.csv`). Note that Yahoo's daily open/high/low/close are split-adjusted (and adjusted
 for some capital changes) even with `auto_adjust=False`, so they differ from KRX's raw prices
 before such events.
+
+Yahoo blocks bots and bursts (HTTP 429). `yfinance` >= 0.2.54 passes the bot check by
+impersonating a browser; on top of that `yahoo-daily` sends one request at a time, 2 s apart plus
+up to 1 s of random jitter (`--min-interval`), waits 60/180/600 s after a 429, stops after a
+fourth 429 in a row or `--max-requests` (default 600), and logs every request in
+`raw/yahoo/fetch_log.csv`.
 
 ## aikstockdata.com (cross-check only)
 
@@ -177,7 +147,6 @@ Individual steps:
 
 ```bash
 python -m qc_krx krx                      # KRX Open API (see above)
-python -m qc_krx yahoo-minute             # minute bars (see above)
 python -m qc_krx verify                   # cross-checks (see above)
 python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv, data/lean/..., data/securities.csv
 python -m qc_krx lean-install PATH        # copy into a LEAN Data folder (see "Using the data in LEAN")
@@ -204,10 +173,8 @@ data/corporate_actions.csv           code,crno,company,type,type_ko,base_date,re
 data/lean/equity/krx/factor_files/{code}.csv   date,price_factor,split_factor,reference_price
 data/lean/equity/krx/map_files/{code}.csv      date,ticker (first date; 20501231 or delisting date)
 data/factor_events.csv               code,type,date,cum_date,ratio,amount (audit trail)
-data/raw/yahoo/minute/{code}/{YYYYMMDD}.csv.gz   time,open,high,low,close,volume (empty = no bars)
 data/raw/yahoo/daily/{code}.csv      Yahoo daily bars (cross-check only)
 data/raw/yahoo/fetch_log.csv         every Yahoo request: time, symbol, range, status, rows
-data/lean/equity/krx/minute/{code}/{YYYYMMDD}_trade.zip   LEAN minute bars
 data/reports/verify_*.csv            cross-check results
 data/raw/universe.csv, history/, daily/   aikstockdata files (cross-check only)
 ```
@@ -225,8 +192,7 @@ In `securities.csv`, a `krx_last_date` earlier than the latest KRX date means th
 delisted (or was suspended) — use it to keep backtests free of survivorship bias.
 
 The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000, raw
-unadjusted). Minute files use LEAN's minute trade format (`{date}_trade.zip` holding
-`{date}_{code}_minute_trade.csv`, lines `ms since midnight,o,h,l,c,v`, prices × 10,000, KST).
+unadjusted).
 
 ### Using the data in LEAN
 
@@ -247,15 +213,13 @@ settlement date and market — LEAN's default fee model throws `unexpected equit
 `KrxPriceVariationModel` (tick sizes), `KrxUniverseData` (daily market-cap universe) and
 `KrxIndex.Benchmark("kospi200")`. [`examples/KrxTopMarketCapAlgorithm.cs`](examples/KrxTopMarketCapAlgorithm.cs)
 is a full strategy backtest (KOSPI top 20 by market cap, 2011–2026); see `docs/GUIDE.md` 5.4.
-[`examples/KrxMinuteSmokeTest.cs`](examples/KrxMinuteSmokeTest.cs) runs on the minute data
-(`AddEquity(..., Resolution.Minute, Market.KRX, fillForward: false)`); see `docs/GUIDE.md` 5.5.
 
 **Python / LEAN CLI (Docker):** [`examples/python/krx_models.py`](examples/python/krx_models.py)
 has the same models in Python (`KrxBoards`, `KrxFeeModel`, `KrxPriceVariationModel`,
 `KrxUniverseData`, `krx_benchmark`, and `krx_initialize` to set fees and tick sizes in one line).
 Copy it next to `main.py` in a `lean init` project, run `lean-install` on the workspace's `data/`
-folder, and `lean backtest` as usual — no C# or custom image needed. Python versions of the
-examples: `examples/python/krx_top_market_cap/main.py`, `examples/python/krx_minute_smoke_test/main.py`.
+folder, and `lean backtest` as usual — no C# or custom image needed. Python version of the
+strategy example: `examples/python/krx_top_market_cap/main.py`.
 Step by step: [docs/BEGINNER.md](docs/BEGINNER.md) Stage 4.
 
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:

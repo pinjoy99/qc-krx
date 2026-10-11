@@ -34,6 +34,9 @@ class BuildTest(unittest.TestCase):
         stale = lean / "daily" / "999999.zip"  # left over from a build that used aikstockdata
         stale.parent.mkdir(parents=True)
         stale.write_bytes(b"")
+        old_minute = lean / "minute" / "005930" / "20261006_trade.zip"  # minute data was removed
+        old_minute.parent.mkdir(parents=True)
+        old_minute.write_bytes(b"")
         self.assertEqual(build.build(self.root), 2)
         csv_text = (self.root / "ohlcv" / "005930.csv").read_text(encoding="utf-8")
         self.assertIn("20261006,278500,279000,270000,272000,12913819,krx", csv_text)
@@ -44,6 +47,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(lines[-1], "20261006 00:00,2785000000,2790000000,2700000000,2720000000,12913819")
         self.assertFalse((self.root / "ohlcv" / "999999.csv").exists())
         self.assertFalse(stale.exists())
+        self.assertFalse((lean / "minute").exists())
         self.assertIn("005930,x,KOSPI,20261002,20261006", (self.root / "securities.csv").read_text())
 
 
