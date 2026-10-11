@@ -15,12 +15,17 @@ custom data folder.
 
 ## Part 1 — What you are building
 
+**Scope at this stage: KOSPI stocks and ETFs.** KOSDAQ, KONEX and NXT (the alternative
+exchange) are not covered for now.
+
 ```
- KRX Open API ──────┐   daily prices of every KOSPI / KOSDAQ / KONEX stock and ETF since 2010,
-                    │   index levels, security master
+ KRX Open API ──────┐   daily prices of every KOSPI stock and ETF since 2010 (the only
+                    │   source of daily bars), KOSPI index levels, security master
  data.go.kr ────────┤   dividend history (since 1980s), corporate-action schedules (since 2010)
                     │
- aikstockdata.com ──┘   optional backup source, no key needed
+ Yahoo Finance ─────┤   minute bars for a few codes, last ~4 weeks (the only minute source)
+                    │
+ aikstockdata.com ──┘   cross-check only (with Yahoo daily bars): `verify` → data/reports/
           │
           ▼  python -m qc_krx <download commands>      → data/raw/   (kept forever, the source of truth)
           ▼  python -m qc_krx build                    → data/ohlcv, data/lean, CSV summaries
@@ -40,6 +45,8 @@ What you get at the end:
 | `data/dividends.csv` | One row per dividend |
 | `data/corporate_actions.csv` | One row per corporate action (splits, rights issues, mergers…) |
 | `data/factor_events.csv` | Audit trail: every adjustment used in the factor files |
+| `data/lean/equity/krx/minute/<code>/*.zip` | Minute bars in LEAN's format (few codes, ~4 weeks) |
+| `data/reports/verify_*.csv` | KRX data compared with aikstockdata and Yahoo |
 
 ---
 
@@ -58,12 +65,13 @@ You need three things. None of them costs money.
    | Category | Service (Korean name) | What it gives | Used by command |
    |---|---|---|---|
    | 주식 | 유가증권 일별매매정보 | KOSPI daily prices | `krx --markets KOSPI` |
-   | 주식 | 코스닥 일별매매정보 | KOSDAQ daily prices | `krx --markets KOSDAQ` |
-   | 주식 | 코넥스 일별매매정보 | KONEX daily prices | `krx --markets KONEX` |
    | 증권상품 | ETF 일별매매정보 | ETF daily prices | `krx --markets ETF` |
    | 지수 | KOSPI 시리즈 일별시세정보 | KOSPI index family | `krx-index --series KOSPI` |
-   | 지수 | KOSDAQ 시리즈 / KRX 시리즈 일별시세정보 | other index families | `krx-index --series KOSDAQ,KRX` |
-   | 주식 | 유가증권 / 코스닥 / 코넥스 종목기본정보 | ISIN, listing date, share class, par value | `krx-info` |
+   | 주식 | 유가증권 종목기본정보 | ISIN, listing date, share class, par value | `krx-info --markets KOSPI` |
+
+   These four are all the current scope needs. (KOSDAQ/KONEX services — 코스닥·코넥스
+   일별매매정보, 종목기본정보, KOSDAQ/KRX 시리즈 — are out of scope for now; the code can use
+   them later with `--markets KOSDAQ` etc.)
 
 4. Approval usually takes up to a day. Check under **마이페이지 → 이용현황**.
 
@@ -114,10 +122,14 @@ The code lives in the private repository `pinjoy99/qc-krx`. Colab needs a token 
    line breaks (the code strips them anyway).
 3. **Check the settings cell (step 1 of the notebook).** List only services that are approved:
    ```python
-   KRX_MARKETS = ["KOSPI", "ETF"]      # add "KOSDAQ", "KONEX" once approved
+   KRX_MARKETS = ["KOSPI", "ETF"]      # the current scope
    KRX_INDEX_SERIES = ["KOSPI"]
    KRX_INFO_MARKETS = ["KOSPI"]
    KRX_START = None                    # None = from 2010-01-04
+   YF_MINUTE_CODES = ["005930", "000660", "069500"]   # minute bars, at most 20 codes; [] to skip
+   YF_MINUTE_KEEP_DAYS = 28            # minute files older than this are deleted
+   YF_DAILY_CODES = ["005930", "000660", "069500"]    # Yahoo daily bars, cross-check only
+   USE_AIKSTOCKDATA = False            # aikstockdata, cross-check only
    ```
 4. **Run it:** **Runtime → Run all**. Allow Drive access when asked.
 5. **Expect:**
@@ -129,13 +141,17 @@ The code lives in the private repository `pinjoy99/qc-krx`. Colab needs a token 
    - Each step prints its duration, e.g. `(11s)`.
 6. **Results** appear in **My Drive → qc-krx-data/**:
    `raw/` (the downloads — don't delete), `securities.csv`, `indices.csv`, `index/`,
-   `dividends.csv`, `corporate_actions.csv`, `factor_events.csv`, `combined/prices_YYYY.csv`
+   `dividends.csv`, `corporate_actions.csv`, `factor_events.csv`, `reports/` (cross-checks),
+   `combined/prices_YYYY.csv`
    (all securities, one file per year — good for Gemini or spreadsheets), `ohlcv.zip`, `lean.zip`.
 7. **Daily updates:** run the notebook again to add new trading days. KRX publishes a day's data
    the next day (observed: not yet available just after midnight KST, available by early
    afternoon KST), so run it in the afternoon. Empty answers for the past week are rechecked
    automatically, so an early run is harmless.
-8. **After adding a market** (e.g. KOSDAQ approved later): add it to `KRX_MARKETS`, set
+8. **Minute bars:** Yahoo keeps only ~4 weeks of 1-minute bars, and the notebook keeps only
+   the last `YF_MINUTE_KEEP_DAYS` days, so minute data always covers the latest few weeks.
+   If Yahoo rate limits the run ("rate limited … times in a row"), run the notebook again later.
+9. **If the scope grows later** (e.g. KOSDAQ): add the market to `KRX_MARKETS`, set
    `REWRITE_ALL_YEARS = True` for one run so the combined yearly files include it.
 
 ---
@@ -148,7 +164,7 @@ The code lives in the private repository `pinjoy99/qc-krx`. Colab needs a token 
    ```bash
    git clone https://github.com/pinjoy99/qc-krx.git
    cd qc-krx
-   pip install -r requirements.txt          # only "requests"
+   pip install -r requirements.txt          # requests and yfinance
    python -m unittest discover tests        # should print "OK"
    ```
 3. **Set your keys for this terminal session**
@@ -164,6 +180,7 @@ The code lives in the private repository `pinjoy99/qc-krx`. Colab needs a token 
    python -m qc_krx krx-info --markets KOSPI       # security master snapshot
    python -m qc_krx dividends                      # dividends (needed for dividend adjustment)
    python -m qc_krx rights                         # corporate actions (15-25 min, weekly)
+   python -m qc_krx yahoo-minute                   # minute bars: 005930 000660 069500, last ~4 weeks
    ```
    Test without a KRX key (10 rows per call from KRX's public sample service):
    `python -m qc_krx krx --sample --start 20261001`.
@@ -189,6 +206,17 @@ Quick sanity checks (all of these were done during development; see `docs/AUDIT.
    2018-05-04 is 51,900 (the 50:1 split).
 4. `data/lean/equity/krx/factor_files/005930.csv` has a row `20180503,…,0.02,2650000`.
 5. `data/factor_events.csv`: scan for unusual ratios (very small or very large) and check them.
+6. **Cross-check against the other sources** (optional downloads, then `verify`):
+   ```bash
+   python -m qc_krx daily                      # aikstockdata: last 30 days
+   python -m qc_krx yahoo-daily 005930 000660 069500 --start 2020-01-01
+   python -m qc_krx verify
+   ```
+   `data/reports/verify_summary.csv` should show 0 `differing` for aikstockdata. Yahoo daily
+   bars differ before splits and some capital changes (Yahoo adjusts them; KRX's are raw), and
+   ETF volumes can differ slightly; look at `verify_mismatches.csv` for anything else.
+   `verify_minute.csv` has one line per Yahoo minute day: expect 360 bars, 09:00–14:59, all
+   inside KRX's daily range, minute volume ~70–85% of KRX's.
 
 ---
 
@@ -275,7 +303,31 @@ values for known dates) and ends with LEAN's statistics. Reference result on dat
 CAGR 5.89%, max drawdown 40.8%, Sharpe 0.197, beta 0.821 and alpha −0.016 vs KOSPI 200, total
 fees ₩44.7M on ₩1B start. These numbers are a pipeline test, not investment advice.
 
-### 5.5 Writing your own algorithm — required settings
+### 5.5 Run the minute-data smoke test
+
+Needs minute files (`yahoo-minute`, then `build` and `lean-install`). Edit the start/end dates
+in `examples/KrxMinuteSmokeTest.cs` to the dates under `Data/equity/krx/minute/005930/`, then:
+
+```bash
+cp <qc-krx>/examples/KrxModels.cs <qc-krx>/examples/KrxMinuteSmokeTest.cs <Lean>/Algorithm.CSharp/
+cd <Lean> && dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release
+cd Launcher/bin/Release
+dotnet QuantConnect.Lean.Launcher.dll --algorithm-type-name KrxMinuteSmokeTest \
+  --algorithm-language CSharp --algorithm-location QuantConnect.Algorithm.CSharp.dll \
+  --data-folder <Lean>/Data/ --close-automatically true
+```
+
+It buys Samsung and KODEX 200 at 09:30 and sells at 14:30 every day. Expected log lines:
+`FILL … 005930 … fee=…` (the sell fee includes the 0.20% tax, the ETF's doesn't) and one
+`DAY yyyy-MM-dd bars=360 first=09:00 last=14:59` per day. Tested on 2026-09-15 → 2026-10-08.
+
+Minute data rules:
+- Use `fillForward: false` in `AddEquity`; otherwise LEAN repeats the 14:59 bar until 15:29.
+- Don't trade after 14:59 or use `MarketOnClose` orders: Yahoo has no bars for 15:00–15:30.
+  Orders sent then fill on the next day's first bar.
+- Market orders fill at Yahoo's bar prices, which can be off the tick grid.
+
+### 5.6 Writing your own algorithm — required settings
 
 Copy `examples/KrxModels.cs` into `Algorithm.CSharp` and use:
 
@@ -321,6 +373,9 @@ var samsung = AddEquity("005930", Resolution.Daily, Market.KRX).Symbol;
 | `non-JSON response (HTTP 200)` | KRX briefly returned an error page | Retried automatically; re-run if it stops |
 | Notebook says "exit code 1" | an API error | Read the lines above it; re-run to resume |
 | Recent date downloaded as empty | KRX publishes the next day / holiday | Automatically retried for 7 days |
-| LEAN: `unexpected equity Market krx` | default fee model | Set a fee model (5.4) |
+| LEAN: `unexpected equity Market krx` | default fee model | Set a fee model (5.6) |
 | LEAN: market hours not found for `Equity-krx` | `lean-install` not run on this Data folder | Run `lean-install` |
+| `rate limited 4 times in a row` / `request budget … used up` | Yahoo throttles bursts | Run `yahoo-minute` again later (it resumes); keep the default 2 s interval |
+| `out of scope (only KOSPI stocks and ETFs)` | a KOSDAQ/KONEX code given to `yahoo-*` | Use KOSPI or ETF codes |
+| `minute data is limited to 20 codes` | storage limit | Use fewer codes |
 | Colab run slow (~4 min build) | Drive is slow with many small files | Expected; see TODO.md |

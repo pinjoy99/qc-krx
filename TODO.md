@@ -3,6 +3,10 @@
 Grouped by the three parts of the project (see `docs/COMPONENTS.md`), most urgent first in each.
 WBS numbers refer to the K-LEAN plan. ✅ = done (kept for the record).
 
+**Current scope:** KOSPI stocks and ETFs. KOSDAQ, KONEX and NXT are out of scope for now (items for
+them are under "Later: scope expansion"). Daily bars: KRX only; minute bars: Yahoo only (few codes,
+28 days); aikstockdata and Yahoo daily bars: cross-checks only.
+
 ## Now (all parts)
 
 - [ ] **Reissue the API keys.** The KRX Open API key and the data.go.kr key were pasted into a chat
@@ -11,9 +15,12 @@ WBS numbers refer to the K-LEAN plan. ✅ = done (kept for the record).
 
 ## qc-krx-data — data pipeline
 
-- [ ] **Get the remaining KRX services approved** and add them to the notebook settings:
-      코스닥 / 코넥스 일별매매정보 (prices), 코스닥 / 코넥스 종목기본정보 (security info),
-      KOSDAQ / KRX 시리즈 일별시세정보 (indices). Then run once with `REWRITE_ALL_YEARS = True`.
+- [ ] **Run `yahoo-minute` at least every 3 weeks** (weekly is safer) — Yahoo keeps only ~28 days,
+      so a longer gap leaves a hole in the minute data. Part of the daily/weekly automation below.
+- [ ] **Thresholds for `verify`**: decide acceptable differences (e.g. aikstockdata must match
+      exactly; Yahoo daily only around adjustment events) and make the notebook flag violations.
+- [ ] Yahoo: re-measure the minute bar coverage (09:00–14:59) and the off-tick prices now and
+      then — Yahoo may change its feed; `verify_minute.csv` shows it.
 - [ ] **Universe flags** (3.5): 관리종목 / 투자경고 / 거래정지, sector — need another source
       (KRX 정보데이터시스템 or KIND). Preferred-share detection beyond the code-ends-in-0 rule.
 - [ ] **Dividends with only a rate** (~13% since 2010): fill amounts from another source (e.g. DART
@@ -27,8 +34,9 @@ WBS numbers refer to the K-LEAN plan. ✅ = done (kept for the record).
 - [ ] **Automate the daily run** (Colab scheduled notebook, or cron on a machine) in the afternoon KST;
       first confirm the exact time KRX publishes each day's data.
 - [ ] **Automated data QA** (3.6): run the cross-checks in `docs/AUDIT.md` §3 after each build.
-- [ ] Later: minute data source (3.1; not available from these APIs); licensed data (KRX Data
-      Marketplace / KOSCOM) for production use (plan §9.2).
+- [ ] Later: a longer or complete minute history (15:00–15:30, closing auction) needs another
+      source (KIS API, purchased data); licensed data (KRX Data Marketplace / KOSCOM) for
+      production use (plan §9.2).
 
 ## qc-krx-market — market definition & models
 
@@ -39,12 +47,21 @@ WBS numbers refer to the K-LEAN plan. ✅ = done (kept for the record).
 - [ ] **Settlement model** (4.4): T+2 sell proceeds.
 - [ ] **KrxBrokerageModel** (4.5): supported order types, tick-size violations, short-selling rules.
       Needed before qc-krx-broker so backtests and live trading follow the same rules.
-- [ ] **Market hours** (2.1): NXT (alternative exchange) sessions, late opens (first trading day of
-      the year, 수능일).
+- [ ] **Market hours** (2.1): late opens (first trading day of the year, 수능일).
+- [ ] **Minute backtests without 15:00–15:30 data**: reject or warn on MarketOnClose / orders after
+      14:59, or fill them at the KRX daily close (a fill model), so results aren't silently wrong.
 - [ ] **Investigate LEAN's "Estimated Strategy Capacity ₩0"** in KRX backtests.
 - [ ] **Python versions of the models** (`KrxModels.cs`) and a tested Python LEAN algorithm.
 - [ ] Later: upstream contribution (7.3) — `Equity-krx` market definition and KRX models as a
       QuantConnect/Lean PR.
+
+## Later: scope expansion (KOSDAQ, KONEX, NXT)
+
+- [ ] Get the KRX services approved: 코스닥 / 코넥스 일별매매정보, 종목기본정보, KOSDAQ / KRX 시리즈
+      일별시세정보; add them to `KRX_MARKETS` and run once with `REWRITE_ALL_YEARS = True`.
+- [ ] Verify the KOSDAQ/KONEX data with `verify` (aikstockdata covers KOSDAQ; Yahoo uses `.KQ`).
+- [ ] NXT (alternative exchange, since 2025-03): find a data source; sessions (08:00–20:00) in
+      market hours; how to combine KRX + NXT volume.
 
 ## qc-krx-broker — broker plugin (not started)
 
@@ -68,13 +85,16 @@ WBS numbers refer to the K-LEAN plan. ✅ = done (kept for the record).
 - ✅ LEAN factor files and map files, validated on 22k event days — `8fe4d26`
 - ✅ 2.4 Benchmark data: KOSPI / KOSPI 200 index files for LEAN — `58f9804`
 - ✅ 3.5 Universe: daily `universe/yyyyMMdd.zip` (market cap, trading value, shares) — `58f9804`
+- ✅ Scope KOSPI + ETF; KRX the only daily source; Yahoo minute bars (few codes, 28 days, rate
+  limiting) → LEAN minute files; `verify` against aikstockdata and Yahoo
 
 ### qc-krx-market
 - ✅ `lean-install` (KRX equity market hours + symbol properties) and a LEAN backtest on real data — `70af60e`
 - ✅ 4.1 KrxFeeModel (commission + sell tax by settlement date and market) and 4.2 KrxPriceVariationModel (tick sizes incl. 2023 reform) — `58f9804`
 - ✅ `KrxUniverseData`, `KrxIndex.Benchmark` (works around LEAN's hourly benchmark subscription) — `58f9804`
 - ✅ First strategy backtest (KOSPI top 20 by market cap, 2011–2026) in LEAN, replicated independently in Python — `58f9804`
+- ✅ Minute-data smoke test in LEAN (`KrxMinuteSmokeTest`, 360 bars/day, KRX fees on minute fills)
 
 ### Documentation
 - ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list — `9d2337c`
-- ✅ Three-part project structure (`docs/COMPONENTS.md`)
+- ✅ Three-part project structure (`docs/COMPONENTS.md`) — `ced8ab5`

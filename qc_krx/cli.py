@@ -4,34 +4,34 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from pathlib import Path
 
-from qc_krx import build, dividends, krx_api, lean_install, rights, scraper
+from qc_krx import build, dividends, krx_api, lean_install, rights, scraper, verify, yahoo
 from qc_krx.client import Client
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="qc_krx", description="Scrape KRX daily data (aikstockdata.com and the KRX Open API)")
+    p = argparse.ArgumentParser(prog="qc_krx", description="KRX data for QuantConnect LEAN: KOSPI stocks and ETFs from the KRX Open API "
+                                "(daily), Yahoo Finance (minute bars), with aikstockdata.com and Yahoo as cross-checks")
     p.add_argument("--root", type=Path, default=Path("data"), help="output directory (default: data)")
     p.add_argument("--interval", type=float, default=0.1, help="min seconds between requests (default: 0.1)")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("universe", help="download the stock list")
+    sub.add_parser("universe", help="aikstockdata (check only): download the stock list")
 
-    h = sub.add_parser("history", help="download per-stock close/volume history (since 2020)")
+    h = sub.add_parser("history", help="aikstockdata (check only): per-stock close/volume history (since 2020)")
     h.add_argument("codes", nargs="*", help="6-digit codes (default: whole universe)")
     h.add_argument("--workers", type=int, default=4)
 
-    d = sub.add_parser("daily", help="download the daily full-market OHLCV files still on the site")
+    d = sub.add_parser("daily", help="aikstockdata (check only): the daily full-market OHLCV files still on the site")
     d.add_argument("--force", action="store_true", help="re-download files already on disk")
 
     k = sub.add_parser("krx", help="download full-market daily OHLCV from the KRX Open API (needs KRX_API_KEY)")
     k.add_argument("--start", help="first date YYYYMMDD (default: 20100104, or 20130701 for KONEX)")
     k.add_argument("--end", help="last date YYYYMMDD (default: today KST)")
-    k.add_argument("--markets", default=",".join(krx_api.ENDPOINTS),
-                   help="comma-separated subset of %(default)s")
+    k.add_argument("--markets", default=",".join(krx_api.IN_SCOPE),
+                   help=f"comma-separated, default %(default)s (in scope); also {', '.join(krx_api.ENDPOINTS)}")
     k.add_argument("--force", action="store_true", help="re-download dates already on disk")
     k.add_argument("--sample", action="store_true",
                    help="use KRX's public sample endpoint (10 rows per call, no key needed) to test the pipeline")
@@ -39,12 +39,14 @@ def main(argv: list[str] | None = None) -> int:
     x = sub.add_parser("krx-index", help="download daily index levels from the KRX Open API (needs KRX_API_KEY)")
     x.add_argument("--start", help="first date YYYYMMDD (default: 20100104)")
     x.add_argument("--end", help="last date YYYYMMDD (default: today KST)")
-    x.add_argument("--series", default=",".join(krx_api.INDEX_ENDPOINTS), help="comma-separated subset of %(default)s")
+    x.add_argument("--series", default="KOSPI",
+                   help=f"comma-separated, default %(default)s (in scope); also {', '.join(krx_api.INDEX_ENDPOINTS)}")
     x.add_argument("--force", action="store_true", help="re-download dates already on disk")
 
     i = sub.add_parser("krx-info", help="save a KRX security-master snapshot (ISIN, listing date, share class, par value)")
     i.add_argument("--date", help="YYYYMMDD (default: most recent date with data)")
-    i.add_argument("--markets", default=",".join(krx_api.INFO_ENDPOINTS), help="comma-separated subset of %(default)s")
+    i.add_argument("--markets", default="KOSPI",
+                   help=f"comma-separated, default %(default)s (in scope); also {', '.join(krx_api.INFO_ENDPOINTS)}")
 
     dv = sub.add_parser("dividends", help="download dividend history from data.go.kr (needs DATA_GO_KR_KEY)")
     dv.add_argument("--max-age-days", type=float, default=1, help="skip if the saved copy is newer (default: 1)")
@@ -52,6 +54,23 @@ def main(argv: list[str] | None = None) -> int:
     rg = sub.add_parser("rights", help="download corporate-action schedules from data.go.kr (needs DATA_GO_KR_KEY)")
     rg.add_argument("--max-age-days", type=float, default=7, help="skip if the saved copy is newer (default: 7)")
     rg.add_argument("--force", action="store_true", help="download even if the saved copy is recent")
+
+    for name, what in (("yahoo-minute", "1-minute bars from Yahoo for LEAN tests (few codes, last 28 days)"),
+                       ("yahoo-daily", "daily bars from Yahoo, only to check the KRX data (`verify`)")):
+        y = sub.add_parser(name, help=what)
+        y.add_argument("codes", nargs="*", help="6-digit KOSPI stock or ETF codes" + (
+            f" (default: {' '.join(yahoo.DEFAULT_MINUTE_CODES)}; at most {yahoo.MAX_MINUTE_CODES})"
+            if name == "yahoo-minute" else ""))
+        y.add_argument("--top", type=int, default=0, help="add the N largest KOSPI stocks by market cap (needs raw/krx)")
+        y.add_argument("--min-interval", type=float, default=2.0, help="seconds between Yahoo requests (default: 2, plus up to 1 s jitter)")
+        y.add_argument("--max-requests", type=int, default=600, help="stop after this many requests (default: 600); re-run to resume")
+        if name == "yahoo-minute":
+            y.add_argument("--keep-days", type=int, default=yahoo.MINUTE_KEEP_DAYS,
+                           help="delete minute files older than this many days (default: %(default)s; 0 = keep all)")
+        if name == "yahoo-daily":
+            y.add_argument("--start", default="2020-01-01", help="first date YYYY-MM-DD (default: 2020-01-01)")
+
+    sub.add_parser("verify", help="compare KRX daily data with aikstockdata / Yahoo files on disk; writes reports/")
 
     b = sub.add_parser("build", help="merge raw files into data/ohlcv and LEAN zips")
     b.add_argument("--no-lean", action="store_true", help="skip LEAN zip output")
@@ -61,8 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     li.add_argument("lean_data", type=Path, help="path to LEAN's Data folder")
     li.add_argument("--market", default="krx")
 
-    a = sub.add_parser("all", help="universe + history + daily (+ krx if KRX_API_KEY is set) + build")
-    a.add_argument("--workers", type=int, default=4)
+    a = sub.add_parser("all", help="krx (KOSPI, ETF) + krx-index (KOSPI) + build; needs KRX_API_KEY")
     a.add_argument("--no-lean", action="store_true")
     a.add_argument("--market", default="krx")
 
@@ -130,19 +148,38 @@ def main(argv: list[str] | None = None) -> int:
         build.build(root, lean=not args.no_lean, market=args.market)
     elif args.cmd == "lean-install":
         lean_install.install(root, args.lean_data, market=args.market)
+    elif args.cmd in ("yahoo-minute", "yahoo-daily"):
+        codes = list(dict.fromkeys(args.codes + (yahoo.top_codes(root, args.top) if args.top else [])))
+        if not codes and args.cmd == "yahoo-minute":
+            codes = list(yahoo.DEFAULT_MINUTE_CODES)
+        if args.cmd == "yahoo-minute" and len(codes) > yahoo.MAX_MINUTE_CODES:
+            p.error(f"{len(codes)} codes: minute data is limited to {yahoo.MAX_MINUTE_CODES} codes (storage)")
+        if not codes:
+            p.error("give codes and/or --top N")
+        markets = yahoo.known_markets(root)
+        out_of_scope = [c for c in codes if markets.get(c, "KOSPI") not in yahoo.SUFFIX]
+        if out_of_scope:
+            p.error(f"out of scope (only KOSPI stocks and ETFs): {', '.join(out_of_scope)}")
+        pacer = yahoo.Pacer(min_interval=args.min_interval, max_requests=args.max_requests)
+        try:
+            if args.cmd == "yahoo-minute":
+                stats = yahoo.scrape_minute(root, codes, markets, pacer)
+                yahoo.prune_minute(root, args.keep_days)
+                return 1 if stats["failed"] else 0
+            import datetime as dt
+            yahoo.scrape_daily(root, codes, dt.date.fromisoformat(args.start), markets, pacer)
+        except yahoo.Stopped:
+            return 1
+    elif args.cmd == "verify":
+        verify.verify(root)
     elif args.cmd == "all":
-        codes = [c for c, _, _ in scraper.fetch_universe(client, root)]
-        stats = scraper.scrape_histories(client, codes, root, workers=args.workers)
-        scraper.scrape_daily(client, root)
-        failed = bool(stats["failed"])
-        if os.environ.get("KRX_API_KEY"):
-            try:
-                krx_api.scrape_krx(krx_api.client_from_env(), root)
-            except krx_api.KrxApiError as e:
-                logging.error("KRX API error, stopping (re-run to resume): %s", e)
-                failed = True
-        else:
-            logging.info("KRX_API_KEY not set; skipping the KRX Open API source")
+        failed = False
+        try:
+            krx_api.scrape_krx(krx_api.client_from_env(), root, markets=list(krx_api.IN_SCOPE))
+            krx_api.scrape_krx(krx_api.client_from_env(), root, markets=["KOSPI"], dataset="index")
+        except krx_api.KrxApiError as e:
+            logging.error("KRX API error, stopping (re-run to resume): %s", e)
+            failed = True
         build.build(root, lean=not args.no_lean, market=args.market)
         return 1 if failed else 0
     return 0

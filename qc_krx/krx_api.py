@@ -37,6 +37,9 @@ ENDPOINTS = {
     "KONEX": "sto/knx_bydd_trd",
     "ETF": "etp/etf_bydd_trd",
 }
+# Markets in the project's current scope. KOSDAQ, KONEX (and the NXT alternative exchange,
+# which this API doesn't cover) are out of scope for now; their endpoints are kept for later.
+IN_SCOPE = ("KOSPI", "ETF")
 # Security master data (ISIN, listing date, share class, par value, ...) per market.
 INFO_ENDPOINTS = {
     "KOSPI": "sto/stk_isu_base_info",

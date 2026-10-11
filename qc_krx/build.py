@@ -1,14 +1,14 @@
 """Merge raw downloads into per-stock OHLCV files and QuantConnect LEAN daily zips.
 
-Sources, highest priority first (the ``source`` column records which one a row came from):
+The only source of daily bars is the KRX Open API (raw/krx, full OHLCV since 2010; the
+``source`` column says ``krx``). aikstockdata.com and Yahoo Finance are used only to check it
+(``verify`` command, qc_krx/verify.py); Yahoo is also the source of the LEAN minute files
+(qc_krx/yahoo.py).
 
-* ``krx``     - KRX Open API full-market files (raw/krx), full OHLCV since 2010
-* ``daily``   - aikstockdata daily archive (raw/daily), full OHLCV, last 30 days only
-* ``history`` - aikstockdata per-stock history (raw/history), close/volume only, so
-                open = high = low = close
+Scope: KOSPI stocks and ETFs. KOSDAQ, KONEX and NXT are out of scope for now; KRX files for
+other markets found under raw/krx are still built, with a warning.
 
-Prices are raw KRW closes, NOT split-adjusted. Split/merge dates reported by the
-site are kept in ``raw/history_meta.json`` under ``breaks``.
+Prices are raw KRW, NOT split-adjusted; LEAN applies the factor files.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from pathlib import Path
 from qc_krx import factors
 from qc_krx.lean_extras import build_lean_extras
 from qc_krx.dividends import build_dividends
+from qc_krx.yahoo import build_lean_minute
 from qc_krx.rights import build_corporate_actions
 
 log = logging.getLogger(__name__)
@@ -38,41 +39,6 @@ def _int(v: str) -> int | None:
     if not v:
         return None
     return int(float(v))
-
-
-def load_daily_archive(root: Path) -> dict[str, dict[str, Bar]]:
-    """code -> date -> bar, from every raw/daily/quotes_*.csv on disk."""
-    out: dict[str, dict[str, Bar]] = {}
-    for path in sorted((root / "raw" / "daily").glob("quotes_*.csv")):
-        with open(path, encoding="utf-8-sig", newline="") as f:
-            for r in csv.DictReader(f):
-                close = _int(r["clpr"])
-                if not close:
-                    continue
-                vol = _int(r["trqu"]) or 0
-                # The source reports 0 for open/high/low on days without trades.
-                o, h, l = (_int(r[k]) or close for k in ("mkp", "hipr", "lopr"))
-                out.setdefault(r["종목코드"], {})[r["basDt"]] = (o, h, l, close, vol, "daily")
-    return out
-
-
-def load_history(path: Path) -> dict[str, Bar]:
-    bars: dict[str, Bar] = {}
-    with open(path, encoding="utf-8", newline="") as f:
-        for r in csv.DictReader(f):
-            close = _int(r["close"])
-            if not close:
-                continue
-            bars[r["date"]] = (close, close, close, close, _int(r["volume"]) or 0, "history")
-    return bars
-
-
-def merge(*sources: dict[str, Bar]) -> list[tuple[str, Bar]]:
-    """Merge date -> bar maps; later sources win."""
-    merged: dict[str, Bar] = {}
-    for src in sources:
-        merged.update(src)
-    return sorted(merged.items())
 
 
 def _krx_bar(r: dict) -> Bar | None:
@@ -153,25 +119,16 @@ def load_latest_info(root: Path) -> dict[str, dict]:
 
 
 def write_securities(root: Path, krx_meta: dict[str, list[str]], codes: list[str]) -> None:
-    """securities.csv: every code in the output, with its KRX listing span when known
-    (last_date before the latest KRX date means delisted or suspended), plus security
-    master fields from the latest `krx-info` snapshot (blank for codes not in it)."""
+    """securities.csv: every code in the output with its KRX listing span (last_date before
+    the latest KRX date means delisted or suspended), plus security master fields from the
+    latest `krx-info` snapshot (blank for codes not in it)."""
     info = load_latest_info(root)
-    names: dict[str, tuple[str, str]] = {}
-    uni = root / "raw" / "universe.csv"
-    if uni.exists():
-        with open(uni, encoding="utf-8", newline="") as f:
-            names = {r["code"]: (r["name"], r["market"]) for r in csv.DictReader(f)}
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(["code", "name", "market", "krx_first_date", "krx_last_date", *INFO_FIELDS])
     for code in codes:
         extra = [info.get(code, {}).get(k, "") for k in INFO_FIELDS.values()]
-        if code in krx_meta:
-            w.writerow([code, *krx_meta[code], *extra])
-        else:
-            name, market = names.get(code, ("", ""))
-            w.writerow([code, name, market, "", "", *extra])
+        w.writerow([code, *krx_meta[code], *extra])
     (root / "securities.csv").write_text(buf.getvalue(), encoding="utf-8")
 
 
@@ -239,40 +196,56 @@ def build_indices(root: Path) -> int:
     return len(series_rows)
 
 
+IN_SCOPE_MARKETS = ("KOSPI", "ETF")
+
+
+def prune(directory: Path, pattern: str, keep: set[str]) -> int:
+    """Delete outputs of earlier builds for codes no longer built (e.g. stocks that only
+    aikstockdata had, before it became a check-only source)."""
+    n = 0
+    for path in directory.glob(pattern):
+        if path.name.split(".")[0].upper() not in keep:
+            path.unlink()
+            n += 1
+    return n
+
+
 def build(root: Path, lean: bool = True, market: str = "krx") -> int:
-    daily = load_daily_archive(root)
     stage = root / ".build" / "krx_staged"
     krx_meta, calendar = stage_krx(root, stage)
+    other = sorted({m for _, m, _, _ in krx_meta.values()} - set(IN_SCOPE_MARKETS))
+    if other:
+        log.warning("build: raw/krx has markets outside the current scope (%s): built anyway", ", ".join(other))
     n_div = build_dividends(root)  # before the loop: factor files read dividends.csv
     cash_dividends = factors.load_cash_dividends(root)
-    hist_dir = root / "raw" / "history"
-    codes = sorted({p.stem for p in hist_dir.glob("*.csv")} | set(daily) | set(krx_meta))
+    codes = sorted(krx_meta)
     lean_dir = root / "lean" / "equity" / market
     audit = io.StringIO()
     audit.write("code,type,date,cum_date,ratio,amount\n")
     n = n_factor = 0
     for code in codes:
-        hpath, kpath = hist_dir / f"{code}.csv", stage / f"{code}.csv"
-        history = load_history(hpath) if hpath.exists() else {}
-        krx, bases = load_staged(kpath) if kpath.exists() else ({}, {})
-        bars = merge(history, daily.get(code, {}), krx)
-        if not bars:
-            continue
+        krx, bases = load_staged(stage / f"{code}.csv")
+        bars = sorted(krx.items())
         write_ohlcv_csv(root / "ohlcv" / f"{code}.csv", bars)
         if lean:
             write_lean_zip(lean_dir / "daily" / f"{code.lower()}.zip", code, bars)
-            # Factor and map files need KRX's base prices and listing span, so KRX data only.
-            if krx:
-                closes = sorted((d, b[3]) for d, b in krx.items())
-                rows, used = factors.factor_rows(closes, bases, cash_dividends.get(code, []), calendar)
-                if rows:
-                    factors.write_rows(lean_dir / "factor_files" / f"{code.lower()}.csv", rows)
-                    n_factor += 1
-                for e in used:
-                    audit.write(f"{code},{e['type']},{e['date']},{e['cum_date']},{e['ratio']:.10g},{e.get('amount', '')}\n")
-                factors.write_rows(lean_dir / "map_files" / f"{code.lower()}.csv",
-                                   factors.map_rows(code, closes[0][0], closes[-1][0], calendar[-1]))
+            closes = [(d, b[3]) for d, b in bars]
+            rows, used = factors.factor_rows(closes, bases, cash_dividends.get(code, []), calendar)
+            if rows:
+                factors.write_rows(lean_dir / "factor_files" / f"{code.lower()}.csv", rows)
+                n_factor += 1
+            for e in used:
+                audit.write(f"{code},{e['type']},{e['date']},{e['cum_date']},{e['ratio']:.10g},{e.get('amount', '')}\n")
+            factors.write_rows(lean_dir / "map_files" / f"{code.lower()}.csv",
+                               factors.map_rows(code, closes[0][0], closes[-1][0], calendar[-1]))
         n += 1
+    keep = {c.upper() for c in codes}
+    pruned = prune(root / "ohlcv", "*.csv", keep)
+    if lean:
+        pruned += sum(prune(lean_dir / sub, pat, keep) for sub, pat in
+                      (("daily", "*.zip"), ("factor_files", "*.csv"), ("map_files", "*.csv")))
+    if pruned:
+        log.info("build: removed %d files of codes without KRX data", pruned)
     if lean and krx_meta:
         (root / "factor_events.csv").write_text(audit.getvalue(), encoding="utf-8")
     write_securities(root, krx_meta, codes)
@@ -282,6 +255,8 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
         log.info("build: wrote %d indices", n_idx)
     if lean and krx_meta:
         build_lean_extras(root, market)
+    if lean:
+        build_lean_minute(root, market)
     if n_div:
         log.info("build: wrote %d dividend records", n_div)
     if n_factor:
@@ -289,6 +264,5 @@ def build(root: Path, lean: bool = True, market: str = "krx") -> int:
     n_ca = build_corporate_actions(root)
     if n_ca:
         log.info("build: wrote %d corporate actions", n_ca)
-    log.info("build: wrote %d securities (%d with KRX data, %d aikstockdata daily file(s))",
-             n, len(krx_meta), len(list((root / "raw" / "daily").glob("quotes_*.csv"))))
+    log.info("build: wrote %d securities from KRX data", n)
     return n

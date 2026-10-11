@@ -4,15 +4,22 @@
 [audit record](docs/AUDIT.md) (sources, rules, verification, decisions) · [to-do list](TODO.md) ·
 [project structure](docs/COMPONENTS.md) (qc-krx-data / qc-krx-market / qc-krx-broker, 한국어)
 
-Collects Korean daily price data (KOSPI / KOSDAQ / KONEX stocks and ETFs) and converts it
-to per-security OHLCV CSVs and QuantConnect LEAN daily zips. Two sources:
+Collects Korean price data and converts it to per-security OHLCV CSVs and QuantConnect LEAN
+data (daily, and minute bars for a few codes).
 
-1. **KRX Open API** ([openapi.krx.co.kr](https://openapi.krx.co.kr/)) — official, full-market
-   OHLCV for every date since 2010-01-04, including ETFs and stocks that later delisted.
-   Needs a free API key. **This is the main source once you have a key.**
-2. **[aikstockdata.com](https://aikstockdata.com/)** — no key needed; static JSON/CSV files
-   (catalog at `https://aikstockdata.com/data/public/index.json`). Close/volume since 2020,
-   full OHLCV only for the last 30 trading days. No ETFs, no delisted stocks.
+**Scope (current stage): KOSPI stocks and ETFs.** KOSDAQ, KONEX and the NXT alternative exchange
+are not covered for now. The code for the KOSDAQ/KONEX endpoints is kept, but they are not
+downloaded by default, not verified, and the defaults and checks assume KOSPI/ETF.
+
+| Source | Role | What |
+|---|---|---|
+| **KRX Open API** ([openapi.krx.co.kr](https://openapi.krx.co.kr/)) | **the only source of daily bars** | official full-market OHLCV since 2010-01-04, incl. delisted securities; free key |
+| **data.go.kr** (FSC) | dividends, corporate actions | factor files, `dividends.csv`, `corporate_actions.csv` |
+| **Yahoo Finance** (`yfinance`) | **the only source of minute bars**; daily bars as a cross-check | 1-minute bars for the last ~4 weeks, a few codes only (storage) |
+| **[aikstockdata.com](https://aikstockdata.com/)** | cross-check only | close/volume since 2020, OHLCV for the last 30 days; no key |
+
+aikstockdata and Yahoo daily bars never go into the output; `python -m qc_krx verify` compares
+them with the KRX data (see [Verification](#verification-aikstockdata-and-yahoo)).
 
 ## KRX Open API
 
@@ -27,22 +34,22 @@ One call returns every security in that market for one date (`basDd=YYYYMMDD`, k
 `AUTH_KEY` header). Setup:
 
 1. Sign up at openapi.krx.co.kr, request an API key (마이페이지 → API 인증키 신청), then apply
-   for each of the four services above (서비스 이용 → 주식 / 증권상품 → API 이용신청). Approval
+   for the KOSPI and ETF services above (KOSDAQ/KONEX are out of scope for now) (서비스 이용 → 주식 / 증권상품 → API 이용신청). Approval
    can take a day.
 2. Put the key in the `KRX_API_KEY` environment variable (for Claude Code cloud sessions, add it
    in the environment's settings; don't commit it).
 3. Backfill, then run daily:
 
 ```bash
-python -m qc_krx krx                                 # everything since 2010 (~16k calls)
-python -m qc_krx krx --start 20200101 --markets KOSPI,KOSDAQ
+python -m qc_krx krx                                 # KOSPI + ETF since 2010 (~8k calls)
+python -m qc_krx krx --start 20200101 --markets KOSPI
 python -m qc_krx krx --sample --start 20261001       # test without a key (10 rows per call)
 ```
 
 Two more KRX datasets (each needs its own service approval):
 
 ```bash
-python -m qc_krx krx-index --series KOSPI     # index levels: KRX, KOSPI, KOSDAQ series (since 2010)
+python -m qc_krx krx-index --series KOSPI     # index levels of the KOSPI series (KOSPI, KOSPI 200, ...) since 2010
 python -m qc_krx krx-info --markets KOSPI     # security master snapshot: ISIN, listing date,
                                               # share class (common/preferred), par value, REIT etc.
 ```
@@ -97,7 +104,52 @@ and listed shares 128,386,494 → 6,419,324,700. `corporate_actions.csv` has one
 `ex_date`, `listing_date`, `issue_date`, `delivery_date`, `payment_date`, `dividend_pay_date`,
 `meeting_date`.
 
-## aikstockdata.com
+## Minute bars (Yahoo Finance)
+
+Yahoo is the only source of minute bars, for LEAN code and strategy tests. To keep storage
+small, minute data is limited to **a few codes** (default 005930 Samsung Electronics, 000660 SK
+hynix, 069500 KODEX 200; at most 20) and **the last 28 days**, which is also about all Yahoo
+keeps; older files are deleted. About 5 KB per code-day, so 20 codes stay under ~3 MB.
+
+```bash
+python -m qc_krx yahoo-minute                     # default codes
+python -m qc_krx yahoo-minute 005930 069500 --keep-days 28
+python -m qc_krx build                            # also writes lean/equity/krx/minute/...
+```
+
+What the bars are (measured October 2026; details in `docs/AUDIT.md` §3):
+
+- **09:00–14:59 only** (360 bars a day). The last 30 minutes (15:00–15:20 trading and the
+  15:20–15:30 closing auction) are missing, so the minute volume is ~70–85% of the day's and the
+  last minute close isn't the official close. Use the KRX daily bars for closes.
+- Some prices are off the KRX tick grid (e.g. 264,250 for Samsung, whose tick is 500), so not
+  every price is a trade price. All highs/lows lay inside KRX's daily range.
+- Raw (unadjusted) prices in KST, bar start times; LEAN applies the same factor files as daily.
+
+Yahoo has no official API and blocks bots and bursts (HTTP 429). `yfinance` >= 0.2.54 passes
+the bot check by impersonating a browser; on top of that this project sends one request at a
+time, 2 s apart plus up to 1 s of random jitter (`--min-interval`), waits 60/180/600 s after a
+429, stops after a fourth 429 in a row or `--max-requests` (default 600), and never requests a
+day already on disk. Each request is logged in `raw/yahoo/fetch_log.csv`. A stopped run keeps
+what it got; run it again later.
+
+## Verification (aikstockdata and Yahoo)
+
+```bash
+python -m qc_krx daily                            # aikstockdata: last 30 days of OHLCV
+python -m qc_krx history 005930 000660            # aikstockdata: close/volume since 2020
+python -m qc_krx yahoo-daily 005930 069500 --start 2020-01-01
+python -m qc_krx verify                           # -> data/reports/verify_*.csv
+```
+
+`verify` compares every stock-day the other source has with KRX (`verify_summary.csv`,
+`verify_mismatches.csv`) and checks each Yahoo minute day against the KRX daily bar
+(`verify_minute.csv`: bars, first/last time, open = KRX open, inside KRX's range, volume ratio,
+off-tick prices). Note that Yahoo's daily open/high/low/close are split-adjusted (and adjusted
+for some capital changes) even with `auto_adjust=False`, so they differ from KRX's raw prices
+before such events.
+
+## aikstockdata.com (cross-check only)
 
 | File | Contents | Depth |
 |---|---|---|
@@ -112,32 +164,24 @@ Prices are T+1 confirmed closes (published each trading day around 18:30 KST), r
 
 ```bash
 pip install -r requirements.txt
-python -m qc_krx all          # aikstockdata + KRX (if KRX_API_KEY is set) + build
+python -m qc_krx all          # KRX (KOSPI, ETF, KOSPI indices; needs KRX_API_KEY) + build
 ```
 
 Individual steps:
 
 ```bash
-python -m qc_krx universe                 # data/raw/universe.csv
-python -m qc_krx history 005930 000660    # specific stocks (default: whole universe)
-python -m qc_krx daily                    # new daily OHLCV files not yet on disk
 python -m qc_krx krx                      # KRX Open API (see above)
+python -m qc_krx yahoo-minute             # minute bars (see above)
+python -m qc_krx verify                   # cross-checks (see above)
 python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv, data/lean/..., data/securities.csv
 python -m qc_krx lean-install PATH        # copy into a LEAN Data folder (see "Using the data in LEAN")
 ```
 
-Re-runs are incremental: unchanged histories are skipped via ETag, and daily files already on
-disk aren't re-downloaded. Without a KRX key, **run `daily` every trading day** (after ~18:30
-KST): the site only keeps 30 days of OHLCV files, so that's the only way to keep real
-open/high/low history from it.
+Re-runs are incremental: dates already on disk aren't downloaded again.
 
 ## Output
 
 ```
-data/raw/universe.csv
-data/raw/history/{code}.csv          date,close,volume
-data/raw/history_meta.json           per-code etag, as_of and split/merge "breaks"
-data/raw/daily/quotes_YYYYMMDD.csv   as published
 data/raw/krx/{MARKET}/{YYYY}/{YYYYMMDD}.csv.gz   KRX Open API, one market-day per file
 data/ohlcv/{code}.csv                date,open,high,low,close,volume,source
 data/lean/equity/krx/daily/{code}.zip
@@ -154,6 +198,12 @@ data/corporate_actions.csv           code,crno,company,type,type_ko,base_date,re
 data/lean/equity/krx/factor_files/{code}.csv   date,price_factor,split_factor,reference_price
 data/lean/equity/krx/map_files/{code}.csv      date,ticker (first date; 20501231 or delisting date)
 data/factor_events.csv               code,type,date,cum_date,ratio,amount (audit trail)
+data/raw/yahoo/minute/{code}/{YYYYMMDD}.csv.gz   time,open,high,low,close,volume (empty = no bars)
+data/raw/yahoo/daily/{code}.csv      Yahoo daily bars (cross-check only)
+data/raw/yahoo/fetch_log.csv         every Yahoo request: time, symbol, range, status, rows
+data/lean/equity/krx/minute/{code}/{YYYYMMDD}_trade.zip   LEAN minute bars
+data/reports/verify_*.csv            cross-check results
+data/raw/universe.csv, history/, daily/   aikstockdata files (cross-check only)
 ```
 
 Main indices get short file names (`KOSPI`, `KOSPI200`, `KOSDAQ`, `KOSDAQ150`, `KRX300`); the
@@ -161,15 +211,16 @@ rest are `{SERIES}_{Korean name}`. The security-master columns in `securities.cs
 latest `krx-info` snapshot and are blank for codes not in it (e.g. delisted ones). A change in
 `par_value` between snapshots marks a stock split or reverse split.
 
-For each date `data/ohlcv` takes the row from the best source available: `krx`, then `daily`
-(both real OHLCV), then `history` (close only, so open = high = low = close). On no-trade days
-both OHLCV sources report open/high/low as 0; these are replaced by the close.
+`data/ohlcv` and the LEAN daily files come from the KRX Open API only (`source` = `krx`). On
+no-trade days KRX reports open/high/low as 0; these are replaced by the close. Files of codes
+without KRX data (left by older builds that merged aikstockdata) are deleted by `build`.
 
 In `securities.csv`, a `krx_last_date` earlier than the latest KRX date means the security
 delisted (or was suspended) — use it to keep backtests free of survivorship bias.
 
 The LEAN zips use LEAN's equity daily format (`yyyyMMdd 00:00,o,h,l,c,v`, prices × 10,000, raw
-unadjusted).
+unadjusted). Minute files use LEAN's minute trade format (`{date}_trade.zip` holding
+`{date}_{code}_minute_trade.csv`, lines `ms since midnight,o,h,l,c,v`, prices × 10,000, KST).
 
 ### Using the data in LEAN
 
@@ -190,6 +241,8 @@ settlement date and market — LEAN's default fee model throws `unexpected equit
 `KrxPriceVariationModel` (tick sizes), `KrxUniverseData` (daily market-cap universe) and
 `KrxIndex.Benchmark("kospi200")`. [`examples/KrxTopMarketCapAlgorithm.cs`](examples/KrxTopMarketCapAlgorithm.cs)
 is a full strategy backtest (KOSPI top 20 by market cap, 2011–2026); see `docs/GUIDE.md` 5.4.
+[`examples/KrxMinuteSmokeTest.cs`](examples/KrxMinuteSmokeTest.cs) runs on the minute data
+(`AddEquity(..., Resolution.Minute, Market.KRX, fillForward: false)`); see `docs/GUIDE.md` 5.5.
 
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
 `examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04
@@ -230,7 +283,8 @@ raw prices to 7 in adjusted prices (limit-down days, and a fund's final liquidat
 
 ## License of the data
 
-The site permits non-commercial use with attribution and forbids commercial redistribution
+Yahoo Finance data is for personal, non-commercial use under Yahoo's terms; `yfinance` is not
+affiliated with Yahoo. aikstockdata permits non-commercial use with attribution and forbids commercial redistribution
 (`https://aikstockdata.com/licenses/aiksd-public-1.1.txt`; prices also follow KOGL Type 4).
 `data/` is git-ignored for this reason. Attribution:
 자료: 한국주식데이터(aikstockdata.com) — 원천: 금융위원회 공공데이터포털.

@@ -71,7 +71,7 @@ class KrxApiTest(unittest.TestCase):
         krx_api.scrape_krx(client, self.root, start="20130627", end="20130702", markets=["KONEX"])
         self.assertEqual([d for _, d in client.calls], ["20130701", "20130702"])
 
-    def test_build_prefers_krx_and_records_securities(self):
+    def test_build_uses_krx_only_and_records_securities(self):
         krx_api.write_day(krx_api.day_path(self.root, "KOSDAQ", "20200414"), KOSDAQ_ROWS)
         krx_api.write_day(krx_api.day_path(self.root, "ETF", "20261005"), [ETF_HOLIDAY_ROW])
         hist = self.root / "raw" / "history"
@@ -80,8 +80,8 @@ class KrxApiTest(unittest.TestCase):
 
         self.assertEqual(build.build(self.root), 2)
         rows = (self.root / "ohlcv" / "005930.csv").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(rows[1:], ["20200413,48000,48000,48000,48000,7,history",
-                                    "20200414,48500,49500,48000,49000,100,krx"])
+        # aikstockdata history is check-only: its extra day and its values are not used.
+        self.assertEqual(rows[1:], ["20200414,48500,49500,48000,49000,100,krx"])
         # No-trade day: open/high/low of 0 fall back to the close.
         self.assertIn("20200414,717,717,717,717,0,krx",
                       (self.root / "ohlcv" / "900100.csv").read_text(encoding="utf-8"))
