@@ -142,6 +142,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | Yahoo daily vs KRX (`verify`, 12 codes, 2026-09-01 → 2026-10-07) | 281 of 288 stock-days identical. 6 differ: 207940 before an adjustment event, Yahoo prices × 0.99326 and volume × 1.00678 (Yahoo back-adjusts; KRX is raw). 1: 069500 volume 26.5M vs 28.2M on 2026-09-15 |
 | Yahoo minute bars vs KRX — *the measurement behind removing minute data* (`verify`, 12 codes, 168 code-days with KRX data, 2026-09-15 → 2026-10-07) | 357–360 bars a day, **always 09:00–14:59** (no 15:00–15:30, no closing auction); first open = KRX open on 141/168; all highs/lows inside KRX's range on 168/168 (equal on 145); last minute close = KRX close on 17/168; minute volume / KRX volume median 0.80 (10%–90%: 0.67–0.88, but 0.15–2.41 overall, 8 days > 1). The days above 1 come from **single-bar volume spikes**: 8 code-days have one minute bar holding 20–90% of the day's KRX volume (340–610× the median bar), e.g. 069500 2026-09-23 (90%), 009150 2026-09-22 (89%) — `max_bar_volume_ratio` in `verify_minute.csv`; 5.6% of prices off the KRX tick grid (Samsung 26%: e.g. 264,250 with a 500 tick) |
 | LEAN minute test (since removed; `examples/KrxMinuteSmokeTest.cs` and a Python version gave identical value and fees), 005930 + 069500, 2026-09-15 → 2026-10-08) | 15 days × 360 bars 09:00–14:59 with `fillForward: false` (with fill-forward LEAN shows 390, repeating 14:59 until 15:29); 60 orders filled at 09:30/14:30; sell fee on 179 × 247,500 = ₩95,250 (0.015% + 0.20% tax), ETF sell commission only |
+| C# vs Python parity (`KrxTopMarketCapAlgorithm`, both languages, same data, 2023-02-01 → 2026-10-07, ₩1B, 2026-10-17) | Identical: end equity ₩2,106,541,997.48, fees ₩13,395,456, 670 orders, CAGR 22.398%, drawdown 31.1%, Sharpe 0.547. Runtime C# 18 s, Python 2 min 21 s. Earlier fixes found by this comparison: float fees drifted by a few won (now Decimal); the Python tick model wasn't called until it got `__namespace__` |
 | Full KRX backfill 2010-01-04 → 2026-10-06/08 | KOSPI 4,371 days (~3.8M rows), ETF 4,372 days, KOSPI index family 4,371 days (53 indices); no errors after the retry fix |
 | Colab copy on Drive vs independent download here | raw files for 2026-10-01/02/05/06 byte-size identical for KOSPI and ETF |
 | Samsung 50:1 split | KRX: 2018-05-04 close 2,650,000 → 51,900, listed shares 128,386,494 → 6,419,324,700 (exactly 50×); base 53,000 / 2,650,000 = 0.02 |
@@ -185,10 +186,8 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 - LEAN's "Estimated Strategy Capacity" shows ₩0 for KRX backtests (not investigated).
 - The strategy example treats codes ending in "0" as common shares (KRX convention) and has no
   slippage model; universe selection uses the previous trading day's data.
-- Python models (`examples/python/krx_models.py`): tested in LEAN with Python 3.11 (source
-  build, not the LEAN CLI's Docker image) — fees identical to C# (Decimal arithmetic), tick
-  rounding works (225,348 → 225,500). The Python top-20 strategy hasn't been compared with the C#
-  run yet.
+- Python models (`examples/python/krx_models.py`) are tested on a LEAN source build with Python
+  3.11, not in the LEAN CLI's Docker image.
 - Colab runs take ~5 minutes, mostly reading ~13,000 small raw files over Drive.
 - Data use: aikstockdata and KOGL-licensed data are non-commercial; check the terms before any
   commercial use or redistribution.

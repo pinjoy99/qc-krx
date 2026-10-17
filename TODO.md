@@ -17,8 +17,6 @@ cross-checks only. **No minute data** until a better source is available.
 
 - [ ] **Thresholds for `verify`**: decide acceptable differences (e.g. aikstockdata must match
       exactly; Yahoo daily only around adjustment events) and make the notebook flag violations.
-- [ ] **Python top-20 strategy vs C#**: run both on the same data and compare (the minute test
-      already matched exactly before minute data was removed).
 - [ ] **Universe flags** (3.5): 관리종목 / 투자경고 / 거래정지, sector — need another source
       (KRX 정보데이터시스템 or KIND). Preferred-share detection beyond the code-ends-in-0 rule.
 - [ ] **Dividends with only a rate** (~13% since 2010): fill amounts from another source (e.g. DART
@@ -89,8 +87,10 @@ cross-checks only. **No minute data** until a better source is available.
 - ✅ `KrxUniverseData`, `KrxIndex.Benchmark` (works around LEAN's hourly benchmark subscription) — `58f9804`
 - ✅ First strategy backtest (KOSPI top 20 by market cap, 2011–2026) in LEAN, replicated independently in Python — `58f9804`
 - ✅ Python versions of the models (`examples/python/krx_models.py`) for the LEAN CLI, tested in LEAN — `4141be7`
+- ✅ C# vs Python parity on the top-20 strategy (2023–2026): identical results
 
 ### Documentation
 - ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list — `9d2337c`
 - ✅ Beginner's guide (`docs/BEGINNER.md`)
+- ✅ Expert guide: local pipeline + local LEAN build, C# and Python (`docs/EXPERT.md`)
 - ✅ Three-part project structure (`docs/COMPONENTS.md`) — `ced8ab5`

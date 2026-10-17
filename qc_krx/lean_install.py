@@ -76,6 +76,10 @@ def install(root: Path, lean_data: Path, market: str = "krx") -> dict:
 
     dst = lean_data / "equity" / market
     shutil.copytree(src, dst, dirs_exist_ok=True)
+    if (dst / "minute").is_dir() and not (src / "minute").is_dir():
+        # minute files installed before minute data was removed from the project (2026-10-11)
+        shutil.rmtree(dst / "minute")
+        log.info("lean-install: removed old minute files from %s", dst)
     index_src = root / "lean" / "index" / market
     if index_src.is_dir():  # LEAN already has Index-<market> hours and symbol properties
         shutil.copytree(index_src, lean_data / "index" / market, dirs_exist_ok=True)

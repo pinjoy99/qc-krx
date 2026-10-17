@@ -269,8 +269,8 @@ saved under `KRX Top Market Cap/backtests/`). Look for:
 | `Sharpe Ratio` | Return per unit of risk (higher is better) | about 0.20 |
 | `Total Fees` | Commissions and taxes paid | about ₩44.7M on ₩1B |
 
-The reference results come from the C# version of this strategy; the Python version uses the
-same rules (its full 2011–2026 run hasn't been compared yet).
+The reference results come from the C# version of this strategy. The Python version uses the
+same rules and gave identical results to C# on the same data (2023–2026, see EXPERT.md §4.4).
 
 The first lines of the log show `CHECK tax …` and `CHECK tick …`: the tax rates and price steps
 the model uses on known dates. Your numbers can differ slightly if your data is newer. **This is
@@ -363,6 +363,7 @@ folder as `main.py`.
 fee model isn't set (keep `krx_initialize`) or `lean-install` wasn't run on this workspace's
 `data/` folder (4.3).
 
-**Where do I find more detail?** [GUIDE.md](GUIDE.md) (full step-by-step guide),
+**Where do I find more detail?** [EXPERT.md](EXPERT.md) (everything on your own machine: local
+pipeline, LEAN built from source, C# and Python), [GUIDE.md](GUIDE.md) (full step-by-step guide),
 [AUDIT.md](AUDIT.md) (where every number comes from), [COMPONENTS.md](COMPONENTS.md) (how the
 project is organised, in Korean), [TODO.md](../TODO.md) (what's next).

@@ -33,11 +33,14 @@ class LeanInstallTest(unittest.TestCase):
         self.assertEqual(lean_install.trading_holidays(self.root), ["2/16/2018"])
 
     def test_install_is_idempotent(self):
+        old_minute = self.lean / "equity" / "krx" / "minute" / "005930"  # minute data was removed
+        old_minute.mkdir(parents=True)
         for _ in range(2):
             stats = lean_install.install(self.root, self.lean)
         self.assertEqual(stats["securities"], 1)
         self.assertEqual(stats["holidays_only_in_data"], [])
         self.assertTrue((self.lean / "equity" / "krx" / "daily" / "005930.zip").exists())
+        self.assertFalse(old_minute.parent.exists())
         entry = json.loads((self.lean / "market-hours" / "market-hours-database.json").read_text())["entries"]["Equity-krx-[*]"]
         self.assertEqual(entry["exchangeTimeZone"], "Asia/Seoul")
         self.assertEqual(entry["holidays"], ["1/1/2018", "2/16/2018"])
