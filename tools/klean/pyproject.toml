@@ -1,0 +1,18 @@
+# klean-cli: OPTIONAL tool. Nothing in qc-krx needs it; install it only if you want it:
+#   pip install -e tools/klean        (from a clone of qc-krx; it uses the clone's examples/)
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "klean-cli"
+version = "0.1.0"
+description = "Optional: the LEAN CLI's local workflow (init, project-create, backtest) on a LEAN source build, for qc-krx KRX data"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+klean = "klean.cli:main"
+
+[tool.setuptools]
+packages = ["klean"]

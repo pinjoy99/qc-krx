@@ -103,7 +103,7 @@ qc-krx 프로젝트는 세 부분으로 나뉩니다. 지금은 한 저장소(`p
 | `examples/KrxSmokeTest.cs` | 데이터 검증용 테스트(분할·배당·상장폐지 이벤트) |
 | `examples/python/krx_models.py`, `examples/python/krx_top_market_cap/main.py` | 같은 모델·전략의 Python 버전 (LEAN CLI + Docker용; `main.py` 옆에 `krx_models.py`만 두면 됨) |
 | `tests/test_lean_install.py` | 설치기 테스트 (C# 모델은 LEAN 실행으로 검증) |
-| `klean/` (`klean` 명령) | **klean-cli**: LEAN CLI의 로컬 기능(작업공간·프로젝트 생성·백테스트)을 Docker·QuantConnect 계정 없이 LEAN 소스 빌드로 수행. Python·C# 프로젝트 결과 동일 확인 (`docs/KLEAN.md`) |
+| `tools/klean/` (`klean` 명령, **선택 사항**) | **klean-cli**: 별도 설치(`pip install -e tools/klean`)할 때만 사용. 다른 부분은 이것에 의존하지 않음. LEAN CLI의 로컬 기능(작업공간·프로젝트 생성·백테스트)을 Docker·QuantConnect 계정 없이 LEAN 소스 빌드로 수행. Python·C# 프로젝트 결과 동일 확인 (`docs/KLEAN.md`) |
 
 ### 상태
 

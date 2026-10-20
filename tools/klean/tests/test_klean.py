@@ -1,8 +1,13 @@
 import json
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+
+# Runnable from a clone without installing: tools/klean (klean) and the repo root (qc_krx).
+_HERE = Path(__file__).resolve()
+sys.path[:0] = [str(_HERE.parents[1]), str(_HERE.parents[3])]
 
 from klean import cli, projects
 from klean.backtest import launcher_args

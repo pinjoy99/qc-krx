@@ -20,7 +20,7 @@ from pathlib import Path
 from klean import __version__, projects
 from klean.backtest import backtest
 from klean.workspace import (LEAN_COMMIT, LEAN_CONFIG_DIRS, LEAN_OPTIONAL_FILES, LEAN_REPO, PYTHON_PACKAGES,
-                             KleanError, Workspace, check, dotnet, find_python_dll, run, venv_python)
+                             KleanError, REPO_ROOT, Workspace, check, dotnet, find_python_dll, run, venv_python)
 
 
 def cmd_install_lean(args) -> None:
@@ -83,6 +83,8 @@ def cmd_init(args) -> None:
 
 
 def install_data(ws: Workspace, zip_path: Path | None = None, root: Path | None = None) -> None:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))   # qc_krx from the clone; it needn't be installed
     from qc_krx import lean_install
     if zip_path:
         with zipfile.ZipFile(zip_path) as z:

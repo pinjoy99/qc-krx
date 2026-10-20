@@ -56,7 +56,7 @@ cross-checks only. **No minute data** until a better source is available.
 - [ ] NXT (alternative exchange, since 2025-03): find a data source; sessions (08:00–20:00) in
       market hours; how to combine KRX + NXT volume.
 
-## klean-cli
+## klean-cli (optional tool)
 
 - [ ] Research notebooks (Jupyter with LEAN's Python environment) and `klean optimize` (LEAN's
       Optimizer.Launcher), if needed.
@@ -100,5 +100,5 @@ cross-checks only. **No minute data** until a better source is available.
 - ✅ Step-by-step guide (`docs/GUIDE.md`), audit record (`docs/AUDIT.md`), this list — `9d2337c`
 - ✅ Beginner's guide (`docs/BEGINNER.md`)
 - ✅ Expert guide: local pipeline + local LEAN build, C# and Python (`docs/EXPERT.md`)
-- ✅ klean-cli: local LEAN workflow without Docker or a QuantConnect account (`docs/KLEAN.md`); beginner's guide uses it
+- ✅ klean-cli (optional tool in `tools/klean`): local LEAN workflow without Docker or a QuantConnect account (`docs/KLEAN.md`)
 - ✅ Three-part project structure (`docs/COMPONENTS.md`) — `ced8ab5`

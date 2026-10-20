@@ -5,8 +5,8 @@ It takes you from nothing to:
 
 1. **Korean stock data in your Google Drive** (no installation, about 1 day including waiting
    for approvals), and
-2. **your first backtest** in Python on your own computer with klean and LEAN — free, no
-   Docker (optional, about 1 hour).
+2. **your first backtest** in Python on your own computer with LEAN — free, no Docker
+   (optional, about 1 hour).
 
 Every step says what to click, what you should see and what to do if it goes wrong. If you
 want the technical details, read [GUIDE.md](GUIDE.md) after this.
@@ -48,8 +48,7 @@ yet.
 | Adjusted price | Past prices recalculated so splits and dividends don't look like crashes. |
 | Backtest | Running a trading rule on past data to see how it would have done. |
 | Daily bar | One row of OHLCV for one day. |
-| klean | The `klean` command that comes with this project: builds LEAN once and runs your backtests. |
-| Workspace | The folder made by `klean init`: your projects plus a `data/` folder LEAN reads. |
+| LEAN data folder | `~/Lean/Data`: where LEAN reads prices and its settings from. |
 
 ---
 
@@ -164,7 +163,7 @@ Open Google Drive → **My Drive → qc-krx-data**. The useful files:
 | `index/KOSPI.csv`, `index/KOSPI200.csv` | Index levels per day | Google Sheets |
 | `dividends.csv` | Every dividend | Google Sheets |
 | `reports/verify_summary.csv` | How well KRX data matches the other sources | Google Sheets |
-| `lean.zip` | Everything LEAN needs, in LEAN's folder layout (`data/equity/krx/…`) — for `klean init` / `klean data install` (Stage 4) | — |
+| `lean.zip` | Everything LEAN needs, in LEAN's folder layout (`data/equity/krx/…`) — Stage 4 copies it into LEAN | — |
 | `raw/` | The original downloads. **Don't delete or edit.** | — |
 
 Things to know:
@@ -177,84 +176,99 @@ Things to know:
 
 ## Stage 4 — Your first backtest (optional, on your own computer, about 1 hour)
 
-You'll run backtests in **Python** on your own computer with **klean**, a small tool that comes
-with this project. It builds LEAN (QuantConnect's free, open-source backtesting engine) once and
-then runs your strategies with it. **No Docker, no QuantConnect account, nothing to pay.** You
-never write C#. The steps are for **Ubuntu**.
+You'll run backtests in **Python** with **LEAN**, QuantConnect's free, open-source backtesting
+engine, built on your own computer. **No Docker, no QuantConnect account, nothing to pay.** You
+never write C#. The steps are for **Ubuntu**; you need about 5 GB of free disk space.
 
-You need about **5 GB** of free disk space.
-
-> Why not QuantConnect's own `lean` CLI? It needs a paid QuantConnect subscription (from about
-> $10/month) and a large Docker image. If you have one, it works too: the project folders below run
-> under `lean backtest` unchanged ([KLEAN.md](KLEAN.md), last section).
+> QuantConnect's own `lean` CLI needs a paid subscription (from about $10/month) and a large
+> Docker image; this guide doesn't use it. The strategy folders below would run under it unchanged.
+>
+> *Optional shortcut:* [klean](KLEAN.md) is a small tool in this project that runs steps 4.2–4.5
+> for you (`klean init`, `klean backtest`, …). You don't need it; the commands below do the same.
 
 ### 4.1 Install the tools
 
-1. **Git, Python 3.11 and its library.** LEAN runs Python strategies with Python **3.11**
+1. **Git, unzip, Python 3.11 and its library.** LEAN runs Python strategies with Python **3.11**
    exactly. Ubuntu 24.04 ships 3.12, so add the deadsnakes package source first:
    ```bash
-   sudo apt install -y git python3-venv software-properties-common unzip
+   sudo apt install -y git unzip python3-venv software-properties-common
    sudo add-apt-repository -y ppa:deadsnakes/ppa      # not needed on Ubuntu 22.04 / Debian 12
    sudo apt install -y python3.11 python3.11-venv libpython3.11
    ```
-2. **.NET 10** (LEAN is written in C#; you only need it to build LEAN):
+2. **.NET 10** (LEAN is written in C#; you only need .NET to build it):
    ```bash
    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0
    echo 'export PATH=$HOME/.dotnet:$PATH' >> ~/.bashrc && source ~/.bashrc
    dotnet --list-sdks                                 # should show 10.0.something
    ```
-3. **This project and klean.** It asks for your GitHub user name and password: paste your
-   **GitHub token** from 1.3 as the password (nothing appears while you paste):
+
+### 4.2 Download and build LEAN (once, a few minutes)
+
+This gets the exact LEAN version the project was tested with:
+
+```bash
+mkdir ~/Lean && cd ~/Lean
+git init -q && git remote add origin https://github.com/QuantConnect/Lean.git
+git fetch --depth 1 origin 80e7843f645673bcbeaab963049f76f20f6785e1 && git checkout -q FETCH_HEAD
+dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release
+```
+
+**"Build succeeded"** at the end means it worked (many yellow warnings are normal).
+
+### 4.3 Make the Python environment for LEAN (once)
+
+```bash
+python3.11 -m venv ~/lean-py311
+~/lean-py311/bin/pip install pandas==2.3.3 numpy==1.26.4
+```
+
+### 4.4 Put the KRX data into LEAN
+
+1. Get this project's code. It asks for your GitHub user name and password: paste your **GitHub
+   token** from 1.3 as the password (nothing appears while you paste):
    ```bash
-   cd ~
-   git clone https://github.com/pinjoy99/qc-krx.git
-   python3 -m venv ~/.klean/tools
-   source ~/.klean/tools/bin/activate                 # run this again in every new terminal
-   pip install -e ~/qc-krx
-   klean --version
+   git clone https://github.com/pinjoy99/qc-krx.git ~/qc-krx
+   python3 -m venv ~/qc-krx-env
+   source ~/qc-krx-env/bin/activate                   # run this again in every new terminal
+   pip install -r ~/qc-krx/requirements.txt
    ```
+2. From Google Drive, download `qc-krx-data/lean.zip` (say, to `~/Downloads`) and copy its
+   contents into LEAN's data folder:
+   ```bash
+   rm -rf ~/krx-unzipped && unzip -q ~/Downloads/lean.zip -d ~/krx-unzipped
+   cp -r ~/krx-unzipped/data/. ~/Lean/Data/
+   ```
+3. Teach LEAN KRX's trading hours, holidays and the won currency:
+   ```bash
+   cd ~/qc-krx && python -m qc_krx lean-install --config-only ~/Lean/Data
+   ```
+   You should see a line ending with `holidays: … from LEAN …`.
 
-### 4.2 Build LEAN and the Python environment (once)
-
-```bash
-klean install-lean --dir ~/Lean                      # downloads and builds LEAN: 2–10 minutes
-klean install-python --dir ~/.klean/py311            # Python 3.11 with pandas and numpy
-```
-
-"Build succeeded" with many yellow warnings is normal.
-
-### 4.3 Make a workspace with the KRX data
-
-From Google Drive, download `qc-krx-data/lean.zip` (say, to `~/Downloads`). Then:
-
-```bash
-klean init ~/krx-workspace --lean ~/Lean --python-venv ~/.klean/py311 --data-zip ~/Downloads/lean.zip
-cd ~/krx-workspace
-klean doctor                                         # every line should start with OK
-```
-
-The workspace is a folder with your projects and a `data/` folder that LEAN reads: the KRX
-prices, adjustments, stock lists and indices, plus KRX's trading hours, holidays and the won
-currency.
-
-### 4.4 Run the example strategy
+### 4.5 Run the example strategy
 
 The example buys the 20 biggest KOSPI companies in equal amounts and rebalances every month
-from 2011, paying Korean commissions and taxes.
+from 2011, paying Korean commissions and taxes. A strategy is a folder with two files:
+`main.py` (the strategy) and `krx_models.py` (the Korean market rules: fees and taxes, price
+steps, the daily stock list and the KOSPI 200 benchmark).
 
 ```bash
-cd ~/krx-workspace
-klean project-create "KRX Top Market Cap"
-cp ~/qc-krx/examples/python/krx_top_market_cap/main.py "KRX Top Market Cap/main.py"
-klean backtest "KRX Top Market Cap"
+mkdir -p ~/strategies/top20
+cp ~/qc-krx/examples/python/krx_models.py ~/qc-krx/examples/python/krx_top_market_cap/main.py ~/strategies/top20/
+
+cd ~/Lean/Launcher/bin/Release
+export PYTHONNET_PYDLL=$(ls /usr/lib/x86_64-linux-gnu/libpython3.11.so* | head -1)
+export PYTHONPATH=$HOME/lean-py311/lib/python3.11/site-packages
+dotnet QuantConnect.Lean.Launcher.dll --algorithm-type-name KrxTopMarketCapAlgorithm \
+  --algorithm-language Python --algorithm-location ~/strategies/top20/main.py \
+  --data-folder ~/Lean/Data/ --close-automatically true
 ```
 
-The project folder holds two files: `main.py` (the strategy) and `krx_models.py` (the Korean
-market rules: fees and taxes, price steps, the daily stock list and the KOSPI 200 benchmark).
-That's all a KRX project needs.
+The backtest takes a few minutes. At the end LEAN prints **STATISTICS** lines; the same
+results are saved in `~/Lean/Launcher/bin/Release/` as `KrxTopMarketCapAlgorithm-summary.json`,
+`KrxTopMarketCapAlgorithm-log.txt` and so on. The run may end with an error about
+"GIL must always be released" *after* the statistics: that's harmless.
 
-The backtest takes several minutes. At the end klean prints the main statistics; everything
-else is in `KRX Top Market Cap/backtests/<date and time>/`. Look for:
+Look for:
 
 | Line | What it means | Reference result |
 |---|---|---|
@@ -266,15 +280,14 @@ else is in `KRX Top Market Cap/backtests/<date and time>/`. Look for:
 The reference results come from the C# version of this strategy. The Python version uses the
 same rules and gave identical results to C# on the same data (2023–2026, see EXPERT.md §4.4).
 
-`KRX Top Market Cap/backtests/<date and time>/KrxTopMarketCapAlgorithm-log.txt` starts with
-`CHECK tax …` and `CHECK tick …`: the tax rates and price steps the model uses on known dates.
-Your numbers can differ slightly if your data is newer. **This is a test of the setup, not an
-investment recommendation.**
+`KrxTopMarketCapAlgorithm-log.txt` starts with `CHECK tax …` and `CHECK tick …`: the tax rates and
+price steps the model uses on known dates. Your numbers can differ slightly if your data is newer.
+**This is a test of the setup, not an investment recommendation.**
 
-### 4.5 Write your own strategy
+### 4.6 Write your own strategy
 
-Make a new project with `klean project-create "<name>"`: it already contains these lines in
-`main.py`, with `krx_models.py` next to it. Every KRX strategy needs them:
+Make a new folder, copy `~/qc-krx/examples/python/krx_models.py` into it, and start `main.py`
+from these lines. Every KRX strategy needs them:
 
 ```python
 from AlgorithmImports import *
@@ -306,8 +319,10 @@ Rules to remember:
 - Prices are adjusted for splits and dividends automatically.
 - Use **`Resolution.DAILY`**. There is no minute data for now (see below).
 
-Run it with `klean backtest "<project name>"`. To try settings without editing the code, read
-them with `self.get_parameter("weight", "0.9")` and pass `--parameter weight 0.5`.
+Run it with the `dotnet …` command of 4.5, changing `--algorithm-location` to your `main.py`
+and `--algorithm-type-name` to your class name (`MyKrxStrategy` here). To try settings without
+editing the code, read them with `self.get_parameter("weight", "0.9")` and add
+`--parameters weight:0.5` to the command.
 
 ---
 
@@ -316,7 +331,7 @@ them with `self.get_parameter("weight", "0.9")` and pass `--parameter weight 0.5
 | How often | What | Why |
 |---|---|---|
 | Every trading day or week | Open your notebook copy → **Run all** (5–10 minutes) | Adds the new days. KRX publishes a day's data the next afternoon, so run it after lunch. |
-| After each update you want in LEAN | Download the new `lean.zip`, then in the workspace: `klean data install ~/Downloads/lean.zip` | LEAN reads its own copy in the workspace's `data/` folder. |
+| After each update you want in LEAN | Download the new `lean.zip` and repeat 4.4 step 2 (unzip and copy) | LEAN reads its own copy in `~/Lean/Data`. Step 3 doesn't need repeating. |
 
 ---
 
@@ -336,8 +351,8 @@ them with `self.get_parameter("weight", "0.9")` and pass `--parameter weight 0.5
 ## FAQ
 
 **Do I have to pay for anything?** No. The keys, Colab, Drive (the data fits in the free 15 GB),
-LEAN and klean are free. (QuantConnect's own `lean` CLI needs a paid subscription; this guide
-doesn't use it.)
+LEAN are free. (QuantConnect's own `lean` CLI needs a paid subscription; this guide doesn't use
+it.)
 
 **Does the notebook download everything every time?** No. It only downloads days it doesn't have.
 
@@ -352,20 +367,19 @@ is already in Drive. Run all again and it continues.
 use LEAN on your computer as in Stage 4.
 
 **Do I need C#?** No. Everything in this guide is Python. LEAN is written in C#, which is why
-.NET is installed, but klean builds it for you. (`klean project-create --language csharp` makes
-a C# project if you ever want one.)
+.NET is installed to build it once.
 
-**klean says something is missing.** Run `klean doctor` in the workspace: it checks .NET, the LEAN
-build, the data and the Python environment and says what to fix. More in [KLEAN.md](KLEAN.md).
+**A backtest failed.** Scroll up in LEAN's output for the first `ERROR` line.
+`unexpected equity Market krx` means the strategy has no KRX fee model (keep `krx_initialize`).
+Market hours not found for `Equity-krx` means step 4.4.3 wasn't run. Python errors about
+`libpython` or `pandas` mean the two `export` lines of 4.5 weren't run in this terminal.
 
-**A backtest failed.** klean shows the last lines of LEAN's output; the full output is in
-`console.txt` in the project's newest `backtests/…` folder. `unexpected equity Market krx` means
-the strategy has no KRX fee model (keep `krx_initialize`).
+**Is there a shorter way to run backtests?** Optionally, [klean](KLEAN.md) wraps steps 4.2–4.5 in
+a few commands (`klean init`, `klean backtest`) and saves each run in its own folder.
 
-**`No module named krx_models`.** Keep `krx_models.py` in the same project folder as `main.py`
-(`klean project-create` puts it there).
+**`No module named krx_models`.** Keep `krx_models.py` in the same folder as `main.py`.
 
-**Where do I find more detail?** [KLEAN.md](KLEAN.md) (all klean commands), [EXPERT.md](EXPERT.md) (everything on your own machine: local
+**Where do I find more detail?** [EXPERT.md](EXPERT.md) (everything on your own machine: local
 pipeline, LEAN built from source, C# and Python), [GUIDE.md](GUIDE.md) (full step-by-step guide),
 [AUDIT.md](AUDIT.md) (where every number comes from), [COMPONENTS.md](COMPONENTS.md) (how the
 project is organised, in Korean), [TODO.md](../TODO.md) (what's next).

@@ -1,4 +1,9 @@
-# klean-cli
+# klean-cli (optional)
+
+**klean is strictly optional.** Nothing in qc-krx needs it: the data pipeline, `lean.zip`,
+`lean-install`, the KRX models and every guide work without it ([BEGINNER.md](BEGINNER.md)
+Stage 4 and [EXPERT.md](EXPERT.md) §2–4 do the same steps by hand). It lives in its own folder,
+`tools/klean/`, and is only installed if you install it.
 
 `klean` does the local part of the LEAN CLI's workflow (create a workspace, create a project,
 backtest) on a **LEAN build from source**: no Docker, no QuantConnect account, no subscription.
@@ -18,17 +23,18 @@ Not covered: cloud sync, cloud backtests, live trading, research notebooks, opti
 
 ## Install
 
-klean ships with qc-krx. From a clone of this repository:
+From a clone of this repository:
 
 ```bash
 git clone https://github.com/pinjoy99/qc-krx.git && cd qc-krx
 python3 -m venv ~/.klean/tools && source ~/.klean/tools/bin/activate
-pip install -e .                 # installs the `klean` and `qc-krx` commands
+pip install -e tools/klean       # installs only the `klean` command
 klean --version
 ```
 
-`klean` copies the KRX models from this clone's `examples/` folder into new projects, so keep
-the clone (and `git pull` it to get model updates).
+`klean` uses the clone: it copies the KRX models from `examples/` into new projects and uses
+`qc_krx` for `data install`. Keep the clone (and `git pull` it to get model updates). To remove
+klean: `pip uninstall klean-cli`. Its tests: `python -m unittest discover tools/klean/tests`.
 
 Prerequisites: `git`, the **.NET 10 SDK**
 (`curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0`, then add

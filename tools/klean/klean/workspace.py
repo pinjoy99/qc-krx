@@ -19,8 +19,9 @@ PYTHON_PACKAGES = ["pandas==2.3.3", "numpy==1.26.4"]
 # LEAN's own config files a KRX workspace needs (no vendor sample data).
 LEAN_CONFIG_DIRS = ["market-hours", "symbol-properties"]
 LEAN_OPTIONAL_FILES = ["alternative/interest-rate/usa/interest-rate.csv"]
-# qc-krx repository root (klean is run from a clone: `pip install -e .` or `python -m klean`).
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# qc-krx repository root: klean lives in <repo>/tools/klean/klean/ and copies the KRX models from
+# <repo>/examples/ (install it from a clone: `pip install -e tools/klean`).
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class KleanError(Exception):

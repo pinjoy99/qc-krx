@@ -5,13 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qc-krx"
 version = "0.2.0"
-description = "KRX (KOSPI/ETF) data pipeline for QuantConnect LEAN, KRX models, and klean (local LEAN workflow without Docker)"
+description = "KRX (KOSPI/ETF) data pipeline for QuantConnect LEAN, with KRX models"
 requires-python = ">=3.10"
 dependencies = ["requests>=2.28", "yfinance>=0.2.54"]
 
 [project.scripts]
 qc-krx = "qc_krx.cli:main"
-klean = "klean.cli:main"
 
 [tool.setuptools]
-packages = ["qc_krx", "klean"]
+packages = ["qc_krx"]
