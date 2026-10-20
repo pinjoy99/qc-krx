@@ -227,7 +227,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `4141be7` | 2026-10-11 | Python KRX models and examples for the LEAN CLI; beginner's guide uses Python |
 | `874e976` | 2026-10-11 | Minute data removed from the project until a better source is available |
 | `ff76f20` | 2026-10-20 | `lean-package`: lean.zip in LEAN's Data layout (`data/equity/krx`, `data/index/krx`); `lean-install --config-only`. Checked: unzipped into a fresh data folder + `--config-only`, the top-20 backtest gave the identical result (₩2,106,541,997.48, 670 orders) |
-| (this change) | 2026-10-20 | klean-cli (`klean/`, `pyproject.toml`); beginner's guide Stage 4 uses it; docs/KLEAN.md |
+| `51902ab` | 2026-10-20 | klean-cli (`klean/`, `pyproject.toml`); beginner's guide Stage 4 uses it; docs/KLEAN.md |
 
 ## 8. Security note
 
