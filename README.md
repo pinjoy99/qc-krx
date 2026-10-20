@@ -1,6 +1,6 @@
 # qc-krx
 
-**Documentation:** **[beginner's guide](docs/BEGINNER.md)** (start here) · [expert guide](docs/EXPERT.md) (local pipeline + LEAN source build, C#/Python) · [step-by-step guide](docs/GUIDE.md) (install → data → LEAN backtest) ·
+**Documentation:** **[beginner's guide](docs/BEGINNER.md)** (start here) · [klean-cli](docs/KLEAN.md) (local LEAN workflow, no Docker, no account) · [expert guide](docs/EXPERT.md) (local pipeline + LEAN source build, C#/Python) · [step-by-step guide](docs/GUIDE.md) (install → data → LEAN backtest) ·
 [audit record](docs/AUDIT.md) (sources, rules, verification, decisions) · [to-do list](TODO.md) ·
 [project structure](docs/COMPONENTS.md) (qc-krx-data / qc-krx-market / qc-krx-broker, 한국어)
 
@@ -226,9 +226,14 @@ has the same models in Python (`KrxBoards`, `KrxFeeModel`, `KrxPriceVariationMod
 Copy it next to `main.py` in a `lean init` project, run `lean-install` on the workspace's `data/`
 folder, and `lean backtest` as usual — no C# or custom image needed. Python version of the
 strategy example: `examples/python/krx_top_market_cap/main.py`.
-Step by step: [docs/BEGINNER.md](docs/BEGINNER.md) Stage 4. The LEAN CLI needs a paid-tier
-QuantConnect organization; a LEAN source build runs the same Python files for free
-([docs/EXPERT.md](docs/EXPERT.md) §4).
+The LEAN CLI needs a paid-tier QuantConnect organization; a LEAN source build runs the same files
+for free.
+
+**klean-cli** (this repo, `pip install -e .`): the LEAN CLI's local workflow on a LEAN source
+build, no Docker or account — `klean install-lean`, `klean install-python`, `klean init --data-zip
+lean.zip`, `klean project-create NAME --language python|csharp`, `klean backtest NAME`. Python
+and C# projects give identical results. See [docs/KLEAN.md](docs/KLEAN.md); beginners:
+[docs/BEGINNER.md](docs/BEGINNER.md) Stage 4.
 
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
 `examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04

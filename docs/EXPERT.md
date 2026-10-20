@@ -10,6 +10,10 @@ aikstockdata ─┤      verify → reports/                     └─▶ Pytho
 Yahoo daily ──┘      (cross-checks only)
 ```
 
+**Shortcut:** [klean-cli](KLEAN.md) automates §2–4 (build LEAN, workspace, C#/Python projects,
+backtests with timestamped results). This guide explains what happens underneath and how to do it
+by hand.
+
 Assumes Linux (tested on Ubuntu/Debian x86-64). macOS works the same except for the Python
 library path (§4.1). Beginners: [BEGINNER.md](BEGINNER.md). Rules and evidence:
 [AUDIT.md](AUDIT.md).
