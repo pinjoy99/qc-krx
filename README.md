@@ -226,7 +226,9 @@ has the same models in Python (`KrxBoards`, `KrxFeeModel`, `KrxPriceVariationMod
 Copy it next to `main.py` in a `lean init` project, run `lean-install` on the workspace's `data/`
 folder, and `lean backtest` as usual — no C# or custom image needed. Python version of the
 strategy example: `examples/python/krx_top_market_cap/main.py`.
-Step by step: [docs/BEGINNER.md](docs/BEGINNER.md) Stage 4.
+Step by step: [docs/BEGINNER.md](docs/BEGINNER.md) Stage 4. The LEAN CLI needs a paid-tier
+QuantConnect organization; a LEAN source build runs the same Python files for free
+([docs/EXPERT.md](docs/EXPERT.md) §4).
 
 Tested with LEAN built from source (.NET 10, no Docker) on the 2010-2026 KOSPI/ETF data:
 `examples/KrxSmokeTest.cs` sees Samsung's 50:1 split as a `SplitOccurred` event on 2018-05-04

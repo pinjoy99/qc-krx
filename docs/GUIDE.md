@@ -331,7 +331,9 @@ var samsung = AddEquity("005930", Resolution.Daily, Market.KRX).Symbol;
 
 ### 5.6 Python algorithms with the LEAN CLI (Docker)
 
-If you use `pip install lean` / `lean init` with Python, you don't need .NET or a source build:
+If you use `pip install lean` / `lean init` with Python, you don't need .NET or a source build.
+The LEAN CLI needs a paid-tier QuantConnect organization membership; without one, use a source
+build (5.1) and run Python as in [EXPERT.md](EXPERT.md) §4.
 
 1. Unzip `lean.zip` in the workspace made by `lean init` (it contains `data/equity/krx/…`,
    `data/index/krx/…`), then `python -m qc_krx lean-install --config-only <workspace>/data`.

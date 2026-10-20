@@ -1,7 +1,7 @@
 # qc-krx expert guide: local pipeline + local LEAN build (C# and Python)
 
 For quants and engineers who want the whole chain on their own machine, with no Colab, no
-Docker and no LEAN CLI:
+Docker and no LEAN CLI (which needs a paid-tier QuantConnect organization; everything here is free):
 
 ```
 KRX Open API ─┐                                            ┌─▶ C# algorithms  (Algorithm.CSharp)

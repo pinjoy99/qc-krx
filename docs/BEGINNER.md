@@ -183,6 +183,11 @@ inside a **Docker** container (a ready-made box with LEAN and Python in it). You
 LEAN or touch C#. The steps are for **Ubuntu**; macOS and Windows work the same once Docker
 Desktop is installed.
 
+> **Cost:** the LEAN CLI (`lean init`, `lean backtest`) needs your QuantConnect account to be in an
+> organization on a **paid tier** (from about $10/month). LEAN itself is free and open source:
+> without a subscription, build it from source and run C# or Python strategies with it, as in
+> [EXPERT.md](EXPERT.md) §2–4 (tested with these examples).
+
 You need **a lot of free disk space** for LEAN's Docker image (tens of GB) plus a few GB for the
 data.
 
@@ -210,7 +215,7 @@ data.
 
 ```bash
 mkdir ~/lean-workspace && cd ~/lean-workspace
-lean init                              # asks you to log in to a free QuantConnect account if needed
+lean init                              # asks you to log in; needs a paid-tier QuantConnect organization
 ```
 
 This creates `lean.json` and a `data/` folder. The first backtest also downloads LEAN's Docker
@@ -340,8 +345,10 @@ Run it with `lean backtest "<project name>"` as above.
 
 ## FAQ
 
-**Do I have to pay for anything?** No. All keys, Colab, Drive (the data fits in the free 15 GB),
-the LEAN CLI and local backtests are free.
+**Do I have to pay for anything?** The keys, Colab, Drive (the data fits in the free 15 GB) and
+LEAN itself are free. **The LEAN CLI used in Stage 4 is not:** QuantConnect requires a paid-tier
+organization membership (from about $10/month) for `lean init`. To pay nothing, build LEAN from
+source instead ([EXPERT.md](EXPERT.md) §2–4); the same `main.py` and `krx_models.py` run there.
 
 **Does the notebook download everything every time?** No. It only downloads days it doesn't have.
 
