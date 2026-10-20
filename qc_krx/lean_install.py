@@ -20,7 +20,9 @@ import datetime as dt
 import gzip
 import json
 import logging
+import os
 import shutil
+import zipfile
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -65,24 +67,59 @@ def equity_entry(lean_holidays: list[str], data_holidays: list[str]) -> dict:
             "friday": week, "saturday": [], "holidays": holidays, "earlyCloses": {}}
 
 
-def install(root: Path, lean_data: Path, market: str = "krx") -> dict:
+def package(root: Path, out: Path, market: str = "krx", prefix: str = "data") -> int:
+    """Zip the built LEAN data in LEAN's Data-folder layout: ``{prefix}/equity/{market}/...`` and
+    ``{prefix}/index/{market}/...``. Unzipped into a `lean init` workspace (prefix "data") it lands
+    in the workspace's data folder; then run ``lean-install --config-only`` on that folder for the
+    market hours and symbol properties (they live in LEAN's own files, so they aren't in the zip)."""
+    lean_root = root / "lean"
+    dirs = [d for d in (lean_root / "equity" / market, lean_root / "index" / market) if d.is_dir()]
+    if not dirs:
+        raise SystemExit(f"{lean_root / 'equity' / market} not found: run `build` first")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(out.name + ".tmp")
+    n = 0
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        for d in dirs:
+            for path in sorted(d.rglob("*")):
+                if path.is_file():
+                    rel = path.relative_to(lean_root).as_posix()
+                    if rel.startswith(f"equity/{market}/minute/"):
+                        continue  # minute data was removed from the project (2026-10-11)
+                    # Already-compressed LEAN zips are stored, not compressed again.
+                    z.write(path, f"{prefix}/{rel}" if prefix else rel,
+                            zipfile.ZIP_STORED if path.suffix == ".zip" else zipfile.ZIP_DEFLATED)
+                    n += 1
+    os.replace(tmp, out)
+    log.info("lean-package: %d files -> %s (%s/equity/%s, %s/index/%s)", n, out, prefix, market, prefix, market)
+    return n
+
+
+def install(root: Path, lean_data: Path, market: str = "krx", config_only: bool = False) -> dict:
+    """Copy the built LEAN data into ``lean_data`` and add the KRX equity market hours and symbol
+    properties. With ``config_only`` the data is assumed to be there already (e.g. unzipped from
+    ``lean-package``) and only the two config files are updated."""
     src = root / "lean" / "equity" / market
-    if not src.is_dir():
-        raise SystemExit(f"{src} not found: run `build` first")
+    if not config_only and not src.is_dir():
+        raise SystemExit(f"{src} not found: run `build` first (or use --config-only if the data is already in {lean_data})")
     mhdb_path = lean_data / "market-hours" / "market-hours-database.json"
     spdb_path = lean_data / "symbol-properties" / "symbol-properties-database.csv"
     if not mhdb_path.exists() or not spdb_path.exists():
         raise SystemExit(f"{lean_data} doesn't look like a LEAN Data folder (no market-hours/symbol-properties)")
 
     dst = lean_data / "equity" / market
-    shutil.copytree(src, dst, dirs_exist_ok=True)
-    if (dst / "minute").is_dir() and not (src / "minute").is_dir():
+    if config_only:
+        if not (dst / "daily").is_dir():
+            log.warning("lean-install: %s has no daily data yet (unzip lean.zip there first)", dst)
+    else:
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        index_src = root / "lean" / "index" / market
+        if index_src.is_dir():  # LEAN already has Index-<market> hours and symbol properties
+            shutil.copytree(index_src, lean_data / "index" / market, dirs_exist_ok=True)
+    if (dst / "minute").is_dir():
         # minute files installed before minute data was removed from the project (2026-10-11)
         shutil.rmtree(dst / "minute")
         log.info("lean-install: removed old minute files from %s", dst)
-    index_src = root / "lean" / "index" / market
-    if index_src.is_dir():  # LEAN already has Index-<market> hours and symbol properties
-        shutil.copytree(index_src, lean_data / "index" / market, dirs_exist_ok=True)
 
     mhdb = json.loads(mhdb_path.read_text(encoding="utf-8"))
     entries = mhdb["entries"]
@@ -101,5 +138,5 @@ def install(root: Path, lean_data: Path, market: str = "krx") -> dict:
     stats = {"securities": len(list((dst / "daily").glob("*.zip"))), "lean_holidays": len(lean_holidays),
              "data_holidays": len(data_holidays), "holidays_only_in_data": only_data}
     log.info("lean-install: %s -> %s (%d securities); holidays: %d from LEAN, %d from data, %d only in data",
-             src, dst, stats["securities"], len(lean_holidays), len(data_holidays), len(only_data))
+             "config only" if config_only else src, dst, stats["securities"], len(lean_holidays), len(data_holidays), len(only_data))
     return stats

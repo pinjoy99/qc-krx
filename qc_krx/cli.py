@@ -72,6 +72,13 @@ def main(argv: list[str] | None = None) -> int:
     li = sub.add_parser("lean-install", help="copy lean/equity/krx into a LEAN Data folder and add KRX equity config")
     li.add_argument("lean_data", type=Path, help="path to LEAN's Data folder")
     li.add_argument("--market", default="krx")
+    li.add_argument("--config-only", action="store_true",
+                    help="data already in LEAN_DATA (unzipped lean.zip): only add market hours and symbol properties")
+
+    lp = sub.add_parser("lean-package", help="zip lean/ as data/equity/krx + data/index/krx (unzip into a LEAN workspace)")
+    lp.add_argument("out", type=Path, help="zip file to write, e.g. lean.zip")
+    lp.add_argument("--prefix", default="data", help="top folder in the zip (default: data; '' for none)")
+    lp.add_argument("--market", default="krx")
 
     a = sub.add_parser("all", help="krx (KOSPI, ETF) + krx-index (KOSPI) + build; needs KRX_API_KEY")
     a.add_argument("--no-lean", action="store_true")
@@ -140,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "build":
         build.build(root, lean=not args.no_lean, market=args.market)
     elif args.cmd == "lean-install":
-        lean_install.install(root, args.lean_data, market=args.market)
+        lean_install.install(root, args.lean_data, market=args.market, config_only=args.config_only)
+    elif args.cmd == "lean-package":
+        lean_install.package(root, args.out, market=args.market, prefix=args.prefix.strip("/"))
     elif args.cmd == "yahoo-daily":
         codes = list(dict.fromkeys(args.codes + (yahoo.top_codes(root, args.top) if args.top else [])))
         if not codes:

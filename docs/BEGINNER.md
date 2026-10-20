@@ -165,7 +165,7 @@ Open Google Drive → **My Drive → qc-krx-data**. The useful files:
 | `index/KOSPI.csv`, `index/KOSPI200.csv` | Index levels per day | Google Sheets |
 | `dividends.csv` | Every dividend | Google Sheets |
 | `reports/verify_summary.csv` | How well KRX data matches the other sources | Google Sheets |
-| `lean.zip` | Everything LEAN needs (Stage 4) | — |
+| `lean.zip` | Everything LEAN needs, in LEAN's folder layout (`data/equity/krx/…`) — unzip into your LEAN workspace (Stage 4) | — |
 | `raw/` | The original downloads. **Don't delete or edit.** | — |
 
 Things to know:
@@ -228,19 +228,21 @@ image, which takes a while once.
    source ~/lean-env/bin/activate     # the environment from 4.1
    pip install -r qc-krx/requirements.txt
    ```
-2. From Google Drive, download `qc-krx-data/lean.zip`, then unzip it into a folder called
-   `krxdata`, so that you have `~/krxdata/lean/equity/krx/daily/…`:
+2. From Google Drive, download `qc-krx-data/lean.zip` and unzip it **into your workspace**.
+   It is laid out like LEAN's own data folder (`data/equity/krx/…`, `data/index/krx/…`), so it
+   lands right inside the workspace's `data/` folder:
    ```bash
-   mkdir -p ~/krxdata && unzip ~/Downloads/lean.zip -d ~/krxdata
+   cd ~/lean-workspace
+   unzip -o ~/Downloads/lean.zip            # -o: replace older files without asking
+   ls data/equity/krx                        # daily  factor_files  map_files  securities.csv  universe
    ```
-3. Install it into your workspace's `data/` folder:
+3. Teach LEAN KRX's trading hours, holidays and the won currency (this adds two entries to LEAN's
+   own settings files in `data/`, which is why it isn't in the zip):
    ```bash
    cd ~/qc-krx
-   python -m qc_krx --root ~/krxdata lean-install ~/lean-workspace/data
+   python -m qc_krx lean-install --config-only ~/lean-workspace/data
    ```
-   You should see a line ending with `holidays: … from LEAN …`. This copies the KRX prices,
-   corporate-action adjustments, universe files and KOSPI indices into `data/`, and teaches LEAN
-   KRX's trading hours, holidays and the won currency.
+   You should see a line ending with `holidays: … from LEAN …`.
 
 ### 4.4 Run the example strategy
 
@@ -319,7 +321,7 @@ Run it with `lean backtest "<project name>"` as above.
 | How often | What | Why |
 |---|---|---|
 | Every trading day or week | Open your notebook copy → **Run all** (5–10 minutes) | Adds the new days. KRX publishes a day's data the next afternoon, so run it after lunch. |
-| After each update you want in LEAN | Download the new `lean.zip`, unzip it over `~/krxdata` and run the `lean-install` command of 4.3 again | LEAN reads its own copy in the workspace's `data/` folder. |
+| After each update you want in LEAN | Download the new `lean.zip` and unzip it into the workspace again (`unzip -o`, 4.3 step 2) | LEAN reads its own copy in the workspace's `data/` folder. Step 3 only needs repeating if you make a new workspace. |
 
 ---
 

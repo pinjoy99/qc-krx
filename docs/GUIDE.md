@@ -233,15 +233,18 @@ it is what was tested.
 ### 5.2 Put the KRX data into LEAN
 
 1. Get the built data:
-   - Path A: download `lean.zip` from Drive (`qc-krx-data/lean.zip`) and unzip it. It contains
-     `lean/equity/krx/…`. To use `lean-install` you need it under a qc-krx data root: create a
-     folder `krxdata` and unzip so that you have `krxdata/lean/equity/krx/daily/…`. Also copy
-     Drive's `qc-krx-data/raw/krx` to `krxdata/raw/krx` if you want holidays checked against the
-     data (optional — LEAN's own holiday list is used either way).
-   - Path B: your `data/` folder already has this layout.
-2. Install it into LEAN (from the qc-krx folder):
+   - Path A: download `lean.zip` from Drive (`qc-krx-data/lean.zip`). It is in LEAN's data
+     layout: `data/equity/krx/…` and `data/index/krx/…`. Copy its contents into LEAN's `Data/`
+     folder, then add the config entries:
+     ```bash
+     unzip -o lean.zip -d /tmp/krx && cp -r /tmp/krx/data/. <path to Lean>/Data/
+     python -m qc_krx lean-install --config-only <path to Lean>/Data
+     ```
+     (For a `lean init` workspace, unzip it directly in the workspace folder instead.)
+   - Path B: you ran the pipeline yourself; use step 2.
+2. Install it into LEAN from your data root (from the qc-krx folder):
    ```bash
-   python -m qc_krx --root <data or krxdata> lean-install <path to Lean>/Data
+   python -m qc_krx --root <data> lean-install <path to Lean>/Data
    ```
    This copies the prices, factor files, map files, universe files and `securities.csv` into
    `Lean/Data/equity/krx/` and the KOSPI/KOSPI 200 index levels into `Lean/Data/index/krx/`, adds the
@@ -330,8 +333,10 @@ var samsung = AddEquity("005930", Resolution.Daily, Market.KRX).Symbol;
 
 If you use `pip install lean` / `lean init` with Python, you don't need .NET or a source build:
 
-1. `python -m qc_krx --root <data root> lean-install <workspace>/data` (the workspace made by
-   `lean init`; its `data/` folder is what the Docker container reads).
+1. Unzip `lean.zip` in the workspace made by `lean init` (it contains `data/equity/krx/…`,
+   `data/index/krx/…`), then `python -m qc_krx lean-install --config-only <workspace>/data`.
+   Or, from your own data root: `python -m qc_krx --root <data root> lean-install <workspace>/data`.
+   The workspace's `data/` folder is what the Docker container reads.
 2. Copy `examples/python/krx_models.py` into the project folder next to `main.py`.
 3. In `initialize`:
    ```python

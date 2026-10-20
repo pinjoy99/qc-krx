@@ -150,6 +150,7 @@ python -m qc_krx krx                      # KRX Open API (see above)
 python -m qc_krx verify                   # cross-checks (see above)
 python -m qc_krx build [--no-lean]        # data/ohlcv/*.csv, data/lean/..., data/securities.csv
 python -m qc_krx lean-install PATH        # copy into a LEAN Data folder (see "Using the data in LEAN")
+python -m qc_krx lean-package lean.zip    # zip as data/equity/krx + data/index/krx (unzip into a LEAN workspace)
 ```
 
 Re-runs are incremental: dates already on disk aren't downloaded again.
@@ -205,6 +206,11 @@ an `Equity-krx-[*]` market-hours entry (Asia/Seoul, 09:00-15:30; holidays from L
 ```bash
 python -m qc_krx lean-install /path/to/Lean/Data
 ```
+
+Or ship it as a zip in LEAN's layout: `lean-package lean.zip` writes `data/equity/krx/…` and
+`data/index/krx/…` (the Colab notebook's `lean.zip` is made this way). Unzip it in a `lean init`
+workspace, then run `lean-install --config-only <workspace>/data` to add the market hours and
+symbol properties, which live in LEAN's own config files and so aren't in the zip.
 
 In the algorithm: `SetTimeZone("Asia/Seoul")`, `SetAccountCurrency("KRW")`,
 `AddEquity("005930", Resolution.Daily, Market.KRX)`, and the KRX models from

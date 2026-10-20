@@ -154,6 +154,20 @@ dotnet build Launcher/QuantConnect.Lean.Launcher.csproj -c Release   # ~2 min; w
 python -m qc_krx --root /srv/krxdata lean-install /opt/Lean/Data
 ```
 
+To ship the data to another machine, package it in LEAN's layout and install only the config
+entries there:
+
+```bash
+python -m qc_krx --root /srv/krxdata lean-package lean.zip        # data/equity/krx/…, data/index/krx/…
+# on the target, for a lean init workspace:  cd <workspace> && unzip -o lean.zip
+# for a source build:                        unzip -o lean.zip -d /tmp/krx && cp -r /tmp/krx/data/. /opt/Lean/Data/
+python -m qc_krx lean-install --config-only <the Data folder>      # market hours + symbol properties
+```
+
+`--prefix` changes the top folder (`--prefix Data` matches a source build's capitalisation;
+`--prefix ""` for none). Unzipping adds and replaces files but never deletes, same as
+`lean-install`.
+
 Idempotent. It copies `lean/equity/krx` and `lean/index/krx` over what is there (files are
 added and replaced, not deleted — except the old `minute/` folder, which it removes), and:
 - adds `Equity-krx-[*]` to `Data/market-hours/market-hours-database.json`: Asia/Seoul for data

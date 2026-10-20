@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from qc_krx import lean_install
@@ -47,6 +48,30 @@ class LeanInstallTest(unittest.TestCase):
         self.assertIn({"start": "09:00:00", "end": "15:30:00", "state": "market"}, entry["monday"])
         spdb = (self.lean / "symbol-properties" / "symbol-properties-database.csv").read_text().splitlines()
         self.assertEqual(spdb.count("krx,[*],equity,,KRW,1,1,1"), 1)
+
+
+    def test_package_uses_lean_data_layout(self):
+        idx = self.root / "lean" / "index" / "krx" / "daily"
+        idx.mkdir(parents=True)
+        (idx / "kospi200.zip").write_bytes(b"zip")
+        out = self.root / "lean.zip"
+        self.assertEqual(lean_install.package(self.root, out), 2)
+        with zipfile.ZipFile(out) as z:
+            self.assertEqual(sorted(z.namelist()),
+                             ["data/equity/krx/daily/005930.zip", "data/index/krx/daily/kospi200.zip"])
+
+    def test_config_only_after_unzipping_the_package(self):
+        out = self.root / "lean.zip"
+        lean_install.package(self.root, out, prefix="")
+        with zipfile.ZipFile(out) as z:
+            z.extractall(self.lean)  # what a user does with lean.zip
+        stats = lean_install.install(self.root.parent / "nothing-here", self.lean, config_only=True)
+        self.assertEqual(stats["securities"], 1)
+        entries = json.loads((self.lean / "market-hours" / "market-hours-database.json").read_text())["entries"]
+        self.assertIn("Equity-krx-[*]", entries)
+        self.assertEqual(entries["Equity-krx-[*]"]["holidays"], ["1/1/2018", "2/16/2018"])  # LEAN's list
+        spdb = (self.lean / "symbol-properties" / "symbol-properties-database.csv").read_text()
+        self.assertIn("krx,[*],equity,,KRW,1,1,1", spdb)
 
 
 if __name__ == "__main__":
