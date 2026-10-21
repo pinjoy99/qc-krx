@@ -58,6 +58,8 @@ cross-checks only. **No minute data** until a better source is available.
 
 ## klean-cli (optional tool)
 
+Plan by phase, compared with the LEAN CLI: `docs/KLEAN-ROADMAP.md`.
+
 - [ ] Research notebooks (Jupyter with LEAN's Python environment) and `klean optimize` (LEAN's
       Optimizer.Launcher), if needed.
 - [ ] Package the KRX models with klean (today they're copied from the clone's `examples/`).

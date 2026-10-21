@@ -19,7 +19,8 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | `lean backtest` | `klean backtest` | build/check, run LEAN, results in `<project>/backtests/<timestamp>/`, print statistics |
 | — | `klean doctor` | check dotnet, the LEAN build, the data and the Python environment |
 
-Not covered: cloud sync, cloud backtests, live trading, research notebooks, optimization.
+Not covered yet: research notebooks, optimization, reports, live trading. Cloud features are out
+of scope. The plan, command by command against the LEAN CLI: [KLEAN-ROADMAP.md](KLEAN-ROADMAP.md).
 
 ## Install
 
