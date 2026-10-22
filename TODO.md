@@ -67,6 +67,7 @@ Plan by phase, compared with the LEAN CLI: `docs/KLEAN-ROADMAP.md`.
 
 ## qc-krx-broker — broker plugin (not started)
 
+- [ ] Several strategies on one account: design written for IBKR (`docs/design/ibkr-multi-instance.md`); apply the same virtual-account ledger idea to KIS.
 - [ ] Prerequisites: KIS Developers account, app key/secret, **paper-trading account**; decide how
       secrets are stored and masked in logs.
 - [ ] 5.1 Authentication / token refresh (`Connect()`).
