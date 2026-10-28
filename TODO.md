@@ -61,7 +61,9 @@ cross-checks only. **No minute data** until a better source is available.
 Plan by phase, compared with the LEAN CLI: `docs/KLEAN-ROADMAP.md`.
 
 - ✅ P1 (everyday use): backtest options + run manifest, config, logs, compare, data status, templates, lean update.
-- [ ] P2: `optimize` (Optimizer.Launcher), `report` (LEAN Report), shared KRX-models library, `--detach`, `check-models`; optional `klean gui` (results browser) after P2.
+- [ ] P2: `optimize` (Optimizer.Launcher), `report` (LEAN Report), shared KRX-models library, `--detach`, `check-models`.
+- ✅ `klean gui`: local web page (workspace, runs, charts, compare, start backtests).
+- [ ] GUI later: optimization results (after P2 `optimize`), run deletion/renaming, report export.
 
 - [ ] Research notebooks (Jupyter with LEAN's Python environment) and `klean optimize` (LEAN's
       Optimizer.Launcher), if needed.

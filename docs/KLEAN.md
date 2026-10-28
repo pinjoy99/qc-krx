@@ -24,6 +24,7 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | — | `klean compare` | runs side by side: statistics and equity curves, says IDENTICAL / DIFFERENT |
 | (`lean build`) | `klean lean status` / `klean lean update` | the LEAN commit in use; check out another one and rebuild |
 | — | `klean doctor` | check dotnet, the LEAN build, the data and the Python environment |
+| `lean gui` (paid) | `klean gui` | local web page: projects, runs, results charts, comparisons, start backtests |
 
 Not covered yet: research notebooks, optimization, reports, live trading (roadmap P2–P4). Cloud features are out
 of scope. The plan, command by command against the LEAN CLI: [KLEAN-ROADMAP.md](KLEAN-ROADMAP.md).
@@ -179,6 +180,35 @@ on `Lean/Data` directly).
 | P1: `--extra-config algorithm-id MyRun` | result files renamed `MyRun-*`, so the per-run config reaches LEAN |
 | P1: `project-delete` | asks for the name; refuses `data/` and folders outside the workspace |
 | P1: `lean update` (tested commit) | rebuilt in 94 s, 0 errors |
+| GUI (Chromium, light/dark, desktop and 420 px wide) | all pages render with no browser errors; hover values; a backtest started from the page runs, the runs list refreshes, results open; compare of C# vs Python top-market-cap: IDENTICAL; requests without the token: 403; runs outside the workspace refused |
+
+## GUI
+
+```bash
+cd ~/krx-workspace
+klean gui                       # prints http://127.0.0.1:<port>/?token=… and opens the browser
+klean gui --port 8765 --no-browser
+```
+
+A local web page for the workspace (stop it with Ctrl+C):
+
+| Page | Shows |
+|---|---|
+| Workspace | projects with their last run (CAGR, drawdown, Sharpe, end equity), KRX data status, setup check, settings |
+| Project | its runs (tick two or more → Compare), and a form to start a backtest with a name, parameters and extra LEAN config, with LEAN's output live |
+| Run | main figures, equity vs KOSPI 200 (scaled to the starting equity) with hover values, drawdown, all statistics, orders, the algorithm log or LEAN's console output, the run record (`manifest.json`) |
+| Compare | equity curves overlaid and statistics side by side, differences highlighted, IDENTICAL / DIFFERENT |
+
+- It uses only Python's standard library, and the page draws its own charts, so it works offline
+  and installs nothing.
+- **Local only.** It listens on 127.0.0.1, and every request needs the random token in the
+  printed URL, so other web pages open in the browser can't use it. Starting a backtest also
+  needs the token in a request header, which a cross-site form can't send. It only reads and runs
+  projects inside the workspace.
+- It reads the same files as `klean compare` / `klean logs`; backtests started from the page are
+  ordinary klean runs (`<project>/backtests/<timestamp>_<name>/` with `manifest.json`).
+- Long series are thinned to 1,500 points for the charts; the files keep every point.
+- It doesn't edit code: use your editor on the project folders.
 
 ## Moving projects to or from the LEAN CLI
 

@@ -13,6 +13,7 @@
     klean config list | get KEY | set KEY VALUE | unset KEY
     klean lean status | update [--commit C]             the LEAN build used by the workspace
     klean doctor                                        check the setup
+    klean gui [--port N] [--no-browser]                 local web page: projects, runs, charts, compare
 """
 
 from __future__ import annotations
@@ -255,6 +256,12 @@ def cmd_backtest(args) -> int:
     return 0
 
 
+def cmd_gui(args) -> int:
+    from klean import gui
+    gui.serve(Workspace.load(Path.cwd()), port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
 def cmd_doctor(args) -> int:
     try:
         ws = Workspace.load(Path.cwd())
@@ -360,6 +367,11 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("doctor", help="check dotnet, the LEAN build, data and the Python env")
     s.set_defaults(func=cmd_doctor)
+
+    s = sub.add_parser("gui", help="local web page (127.0.0.1 only): projects, runs, charts, compare, start backtests")
+    s.add_argument("--port", type=int, default=0, help="port (default: a free one)")
+    s.add_argument("--no-browser", action="store_true", help="don't open the browser")
+    s.set_defaults(func=cmd_gui)
 
     args = p.parse_args(argv)
     try:

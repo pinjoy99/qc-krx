@@ -16,3 +16,6 @@ klean = "klean.cli:main"
 
 [tool.setuptools]
 packages = ["klean"]
+
+[tool.setuptools.package-data]
+klean = ["static/*.html"]

@@ -51,7 +51,7 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 | `lean cloud …` (backtest, live, push/pull, optimize, object-store, status) | QuantConnect cloud | ➖ | QuantConnect service |
 | `lean private-cloud …` | QuantConnect private cloud | ➖ | QuantConnect service |
 | `lean encrypt` / `decrypt` | encrypt project files for the cloud | ➖ | Cloud feature |
-| `lean gui` / `lean ui` | local GUI (paid) / terminal UI | ➖ | Paid or cloud-backed; a simple local results viewer could come later |
+| `lean gui` / `lean ui` | local GUI (paid) / terminal UI | ✅ `klean gui` (2026-10-28) | Local web page: workspace, project runs, results charts, compare, start backtests. No code editor |
 
 ## Additions that the LEAN CLI doesn't have (KRX-specific)
 

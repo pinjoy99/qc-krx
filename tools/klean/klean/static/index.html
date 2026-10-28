@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>klean</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+  --accent: #2f6fde; --accent-soft: #e8f0fd; --good: #1a7f4b; --bad: #c0392b; --warn: #b26b00;
+  --s1: #2f6fde; --s2: #e07b00; --s3: #1a9b8a; --s4: #b03fa5; --s5: #6b7a00; --s6: #c0392b;
+  --grid: #eceef2; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #12151b; --panel: #1a1e26; --text: #e6e9ef; --muted: #98a1b3; --line: #2a303b;
+    --accent: #6c9cff; --accent-soft: #1f2a40; --good: #4cc38a; --bad: #ff7a6b; --warn: #f0b350;
+    --s1: #6c9cff; --s2: #ffa24a; --s3: #3fd0bb; --s4: #e07ad6; --s5: #b7c94a; --s6: #ff7a6b; --grid: #232833; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; gap: 20px; padding: 10px 20px; background: var(--panel);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+header .brand { font-weight: 700; letter-spacing: .3px; }
+header .brand small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+header nav a { margin-right: 14px; }
+header .ws { margin-left: auto; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+main { max-width: 1240px; margin: 0 auto; padding: 18px 20px 60px; }
+a { color: var(--accent); text-decoration: none; cursor: pointer; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 20px; margin: 4px 0 14px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.crumbs { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+.tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 14px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.tile .k { color: var(--muted); font-size: 12px; }
+.tile .v { font-size: 18px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+tr.diff td { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.badge { display: inline-block; white-space: nowrap; overflow-wrap: normal; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.badge.ok { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.badge.no { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.badge.run { background: var(--accent-soft); color: var(--accent); }
+.muted { color: var(--muted); }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+pre { font: 12px/1.4 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+  overflow: auto; max-height: 360px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent);
+  color: #fff; cursor: pointer; }
+button.secondary { background: transparent; color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+input[type=text] { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; }
+.kv { display: grid; grid-template-columns: 1fr 1fr 28px; gap: 6px; margin-bottom: 6px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; }
+.chart .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); white-space: nowrap; display: none; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin: 4px 0 6px; }
+.legend i { display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+.err { color: var(--bad); white-space: pre-wrap; }
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.tabs a { padding: 6px 12px; border-bottom: 2px solid transparent; color: var(--muted); }
+.tabs a.on { color: var(--text); border-color: var(--accent); }
+.scroll { max-height: 460px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">klean<small>local LEAN · KRX</small></span>
+  <nav><a href="#/">Workspace</a><a href="#/compare">Compare</a></nav>
+  <span class="ws" id="ws"></span>
+</header>
+<main id="app"><p class="muted">Loading…</p></main>
+<script>
+"use strict";
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const app = document.getElementById("app");
+const COLORS = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6"].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+const MAIN = ["Compounding Annual Return", "Drawdown", "Sharpe Ratio", "Net Profit", "Total Fees", "End Equity", "Total Orders"];
+let pollTimer = null;
+let lastJob = null;   // the latest backtest started from a project page, shown after the page refreshes
+
+// ------------------------------------------------------------------ utilities
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c])); }
+async function api(path, params = {}, body = null) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) (Array.isArray(v) ? v : [v]).forEach(x => qs.append(k, x));
+  const res = await fetch(path + (qs.toString() ? "?" + qs : ""), {
+    method: body ? "POST" : "GET", headers: {"X-Klean-Token": TOKEN, "Content-Type": "application/json"},
+    body: body ? JSON.stringify(body) : null});
+  const data = await res.json().catch(() => ({error: res.statusText}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const compact = new Intl.NumberFormat("en", {notation: "compact", maximumFractionDigits: 2});
+const full = new Intl.NumberFormat("en", {maximumFractionDigits: 2});
+function won(v) { return "₩" + full.format(Math.round(v)); }
+function day(t) { return new Date(t * 1000).toISOString().slice(0, 10); }
+function signClass(s) { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? "" : n < 0 ? "neg" : n > 0 ? "pos" : ""; }
+const WON_KEYS = new Set(["End Equity", "Start Equity", "Total Fees"]);
+function fmtStat(k, v) {
+  if (v === "" || v == null || !WON_KEYS.has(k)) return v ?? "";
+  const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
+  return isNaN(n) ? v : won(n);
+}
+function statVal(stats, k) { return fmtStat(k, stats?.[k]); }
+function href(...parts) { return "#/" + parts.map(encodeURIComponent).join("/"); }
+function setTitle(t) { document.title = t ? `${t} · klean` : "klean"; }
+function error(e) { app.innerHTML = `<div class="panel"><h2>Error</h2><div class="err">${esc(e.message || e)}</div></div>`; }
+
+// ------------------------------------------------------------------ SVG line chart
+function lineChart(el, seriesList, {height = 280, yFmt = v => compact.format(v), area = false, zero = false} = {}) {
+  const draw = () => {
+    const W = Math.max(el.clientWidth, 300), H = height, m = {l: 64, r: 14, t: 10, b: 26};
+    const all = seriesList.flatMap(s => s.points);
+    if (!all.length) { el.innerHTML = `<p class="muted">No data.</p>`; return; }
+    let x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+    let y0 = Math.min(...all.map(p => p[1])), y1 = Math.max(...all.map(p => p[1]));
+    if (zero) { y0 = Math.min(y0, 0); y1 = Math.max(y1, 0); }
+    if (y0 === y1) { y0 -= 1; y1 += 1; }
+    const pad = (y1 - y0) * 0.05; y0 -= zero && y0 === 0 ? 0 : pad; y1 += zero && y1 === 0 ? 0 : pad;
+    if (x0 === x1) x1 = x0 + 86400;
+    const X = t => m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => m.t + (y1 - v) / (y1 - y0) * (H - m.t - m.b);
+    const ticks = niceTicks(y0, y1, 5), xt = timeTicks(x0, x1, Math.max(2, Math.floor((W - 80) / 90)));
+    let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">`;
+    for (const v of ticks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
+      `<text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(yFmt(v))}</text>`;
+    xt.forEach((t, i) => { const a = i === 0 ? "start" : i === xt.length - 1 ? "end" : "middle";
+      s += `<text x="${X(t)}" y="${H - 8}" text-anchor="${a}" font-size="11" fill="var(--muted)">${day(t).slice(0, 7)}</text>`; });
+    seriesList.forEach((sr, i) => {
+      if (!sr.points.length) return;
+      const c = sr.color || COLORS[i % COLORS.length];
+      const d = sr.points.map((p, j) => `${j ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+      if (area) s += `<path d="${d}L${X(sr.points.at(-1)[0])},${Y(Math.max(y0, Math.min(0, y1)))}L${X(sr.points[0][0])},${Y(Math.max(y0, Math.min(0, y1)))}Z" fill="${c}" opacity=".15"/>`;
+      s += `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.6" ${sr.dashed ? 'stroke-dasharray="5 4"' : ""}/>`;
+    });
+    s += `<line class="hover" y1="${m.t}" y2="${H - m.b}" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/>`;
+    s += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/></svg>`;
+    el.innerHTML = s + `<div class="tip"></div>`;
+    const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), hl = el.querySelector(".hover");
+    svg.addEventListener("mousemove", ev => {
+      const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+      const t = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+      if (px < m.l || px > W - m.r) { tip.style.display = "none"; hl.setAttribute("visibility", "hidden"); return; }
+      const rows = seriesList.map((sr, i) => { const p = nearest(sr.points, t); return p ? [sr.label, p, sr.color || COLORS[i % COLORS.length]] : null; }).filter(Boolean);
+      if (!rows.length) return;
+      hl.setAttribute("x1", X(rows[0][1][0])); hl.setAttribute("x2", X(rows[0][1][0])); hl.setAttribute("visibility", "visible");
+      tip.innerHTML = `<div class="muted">${day(rows[0][1][0])}</div>` + rows.map(([l, p, c]) => `<div><i style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${c};margin-right:5px"></i>${esc(l)}: <b>${esc(yFmt(p[1]))}</b></div>`).join("");
+      tip.style.display = "block";
+      const left = (ev.clientX - r.left) + 14; tip.style.left = Math.min(left, r.width - tip.offsetWidth - 4) + "px"; tip.style.top = "8px";
+    });
+    svg.addEventListener("mouseleave", () => { tip.style.display = "none"; hl.setAttribute("visibility", "hidden"); });
+  };
+  draw();
+  new ResizeObserver(() => draw()).observe(el);
+}
+function nearest(pts, t) {
+  if (!pts.length) return null; let lo = 0, hi = pts.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid][0] < t) lo = mid + 1; else hi = mid; }
+  return lo > 0 && Math.abs(pts[lo - 1][0] - t) < Math.abs(pts[lo][0] - t) ? pts[lo - 1] : pts[lo];
+}
+function niceTicks(a, b, n) {
+  const step0 = (b - a) / n, mag = Math.pow(10, Math.floor(Math.log10(step0))), r = step0 / mag;
+  const step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag, out = [];
+  for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toPrecision(12));
+  return out;
+}
+function timeTicks(a, b, n) { const out = []; for (let i = 0; i <= n; i++) out.push(a + (b - a) * i / n); return out; }
+function legend(items) { return `<div class="legend">${items.map((it, i) => `<span><i style="background:${it.color || COLORS[i % COLORS.length]}"></i>${esc(it.label)}</span>`).join("")}</div>`; }
+
+// ------------------------------------------------------------------ pages
+async function pageWorkspace() {
+  setTitle("Workspace");
+  const w = await api("/api/workspace");
+  document.getElementById("ws").textContent = w.root;
+  const d = w.data || {};
+  const proj = w.projects.map(p => `<tr><td><a href="${href("project", p.name)}">${esc(p.name)}</a></td><td>${esc(p.language)}</td>
+      <td class="num">${p.runs}</td>
+      <td>${p.last ? `<a href="${href("run", p.last.ref)}">${esc(p.last.name)}</a>` : '<span class="muted">—</span>'}</td>
+      ${["Compounding Annual Return", "Drawdown", "Sharpe Ratio", "End Equity"].map(k => `<td class="num ${k === "Compounding Annual Return" ? signClass(p.last?.stats[k]) : ""}">${esc(p.last ? statVal(p.last.stats, k) : "")}</td>`).join("")}</tr>`).join("");
+  const doctor = w.doctor.map(r => `<tr><td>${r.ok ? '<span class="badge ok">OK</span>' : '<span class="badge no">NO</span>'}</td><td style="overflow-wrap:normal;min-width:9em">${esc(r.item)}</td><td class="muted">${esc(r.detail)}</td></tr>`).join("");
+  const idx = Object.entries(d.indices || {}).map(([k, v]) => `${esc(k)} ${v.first}→${v.last}`).join(", ");
+  app.innerHTML = `<h1>Workspace</h1>
+    <div class="panel"><h2>Projects</h2>${w.projects.length ? `<table><tr><th>Project</th><th>Language</th><th class="num">Runs</th><th>Last run</th>
+      <th class="num">CAGR</th><th class="num">Drawdown</th><th class="num">Sharpe</th><th class="num">End equity</th></tr>${proj}</table>`
+      : `<p class="muted">No projects yet. Create one with <code>klean project-create NAME</code> (templates: ${w.templates.map(esc).join(", ")}).</p>`}</div>
+    <div class="grid">
+      <div class="panel"><h2>KRX data</h2>${d.error ? `<div class="err">${esc(d.error)}</div>` : `<table>
+        <tr><td>Securities</td><td class="num">${d.securities ?? "—"}</td></tr>
+        <tr><td>Dates</td><td class="num">${d.first_date ?? "—"} → ${d.last_date ?? "—"}</td></tr>
+        <tr><td>Active on last date</td><td class="num">${d.active ?? "—"} ${d.active_by_market ? `<span class="muted">(${Object.entries(d.active_by_market).map(([k, v]) => esc(k) + " " + v).join(", ")})</span>` : ""}</td></tr>
+        <tr><td>Delisted / suspended</td><td class="num">${d.delisted_or_suspended ?? "—"}</td></tr>
+        <tr><td>Universe files</td><td class="num">${d.universe_files ? `${d.universe_files.count} (${d.universe_files.first} → ${d.universe_files.last})` : "—"}</td></tr>
+        <tr><td>Indices</td><td class="num">${idx || "—"}</td></tr>
+        <tr><td>Equity-krx market hours</td><td class="num">${d.market_hours?.installed ? `installed, ${d.market_hours.holidays} holidays` : '<span class="neg">missing — klean data install</span>'}</td></tr></table>`}</div>
+      <div class="panel"><h2>Setup check</h2><table>${doctor}</table></div>
+    </div>
+    <div class="panel"><h2>Settings</h2><table>
+      <tr><td>LEAN</td><td>${esc(w.lean_root)}</td></tr><tr><td>Python env</td><td>${esc(w.python_venv || "—")}</td></tr>
+      ${Object.entries(w.lean_config).map(([k, v]) => `<tr><td>${esc(k)} <span class="muted">(LEAN config)</span></td><td>${esc(v)}</td></tr>`).join("")}
+      <tr><td>klean</td><td>${esc(w.version)}</td></tr></table></div>`;
+}
+
+async function pageProject(name) {
+  setTitle(name);
+  const p = await api("/api/project", {name});
+  const rows = p.runs.map(r => `<tr><td><input type="checkbox" value="${esc(r.ref)}"></td>
+      <td><a href="${href("run", r.ref)}">${esc(r.name)}</a> ${r.ok ? "" : '<span class="badge no">failed</span>'}</td>
+      <td class="muted">${esc(Object.entries(r.parameters || {}).map(([k, v]) => k + "=" + v).join(", "))}</td>
+      ${["Compounding Annual Return", "Drawdown", "Sharpe Ratio", "Total Orders", "End Equity"].map(k => `<td class="num ${k === "Compounding Annual Return" ? signClass(r.stats[k]) : ""}">${esc(statVal(r.stats, k))}</td>`).join("")}
+      <td class="num muted">${r.seconds != null ? r.seconds + " s" : ""}</td></tr>`).join("");
+  app.innerHTML = `<div class="crumbs"><a href="#/">Workspace</a> /</div><h1>${esc(p.name)} <span class="badge run">${esc(p.language)}</span></h1>
+    <div class="panel"><h2>Run a backtest</h2>
+      <div class="grid" style="grid-template-columns: 1fr 1fr 1fr">
+        <div><div class="muted">Backtest name (optional)</div><input type="text" id="bname" placeholder="e.g. half-weight"></div>
+        <div><div class="muted">Parameters <a id="addp">+ add</a></div><div id="params"></div></div>
+        <div><div class="muted">Extra LEAN config <a id="addc">+ add</a></div><div id="extra"></div></div>
+      </div>
+      <div class="row" style="margin-top:10px"><button id="go">Start backtest</button><span id="jobstate" class="muted">${lastJob && lastJob.project === p.name ? lastJob.html : ""}</span></div>
+      <pre id="console" style="display:none;margin-top:10px"></pre>
+    </div>
+    <div class="panel"><div class="row" style="justify-content:space-between"><h2>Runs (${p.runs.length})</h2>
+      <button class="secondary" id="cmp" disabled>Compare selected</button></div>
+      ${p.runs.length ? `<div class="scroll"><table><tr><th></th><th>Run</th><th>Parameters</th><th class="num">CAGR</th><th class="num">Drawdown</th><th class="num">Sharpe</th><th class="num">Orders</th><th class="num">End equity</th><th class="num">Time</th></tr>${rows}</table></div>` : '<p class="muted">No runs yet.</p>'}
+    </div>
+    <div class="panel"><h2>Files</h2><div class="muted">${p.files.map(esc).join(" · ")}</div></div>`;
+  const kvRow = target => { const d = document.createElement("div"); d.className = "kv";
+    d.innerHTML = `<input type="text" placeholder="name"><input type="text" placeholder="value"><a title="remove">✕</a>`;
+    d.querySelector("a").onclick = () => d.remove(); document.getElementById(target).appendChild(d); };
+  document.getElementById("addp").onclick = () => kvRow("params");
+  document.getElementById("addc").onclick = () => kvRow("extra");
+  const collect = id => Object.fromEntries([...document.querySelectorAll(`#${id} .kv`)].map(d => [...d.querySelectorAll("input")].map(i => i.value.trim())).filter(([k]) => k));
+  const boxes = () => [...app.querySelectorAll("input[type=checkbox]:checked")].map(b => b.value);
+  app.querySelectorAll("input[type=checkbox]").forEach(b => b.onchange = () => document.getElementById("cmp").disabled = boxes().length < 2);
+  document.getElementById("cmp").onclick = () => location.hash = "#/compare?" + boxes().map(r => "ref=" + encodeURIComponent(r)).join("&");
+  document.getElementById("go").onclick = async () => {
+    const btn = document.getElementById("go"), state = document.getElementById("jobstate"), con = document.getElementById("console");
+    btn.disabled = true; state.textContent = "starting…";
+    try {
+      const job = await api("/api/backtest", {}, {project: p.name, backtestName: document.getElementById("bname").value.trim(),
+        parameters: collect("params"), extraConfig: collect("extra")});
+      con.style.display = "block";
+      const poll = async () => {
+        const j = await api("/api/job", {id: job.id});
+        con.textContent = j.console.join("\n") || "(building…)"; con.scrollTop = con.scrollHeight;
+        state.innerHTML = j.status === "done" ? `<span class="badge ok">done</span> <a href="${href("run", j.ref)}">open results</a>`
+          : j.status === "failed" ? `<span class="badge no">failed</span> <span class="err">${esc(j.error.split("\n")[0])}</span>`
+          : `<span class="badge run">${esc(j.status)}</span> ${Math.round(Date.now() / 1000 - j.started)} s`;
+        if (j.status === "done" || j.status === "failed") {
+          btn.disabled = false;
+          if (j.status === "failed") { con.textContent = j.error; return; }
+          lastJob = {project: p.name, html: state.innerHTML};
+          if (location.hash.startsWith("#/project/")) pageProject(p.name);   // refresh the runs list
+          return;
+        }
+        pollTimer = setTimeout(poll, 1500);
+      };
+      poll();
+    } catch (e) { state.innerHTML = `<span class="err">${esc(e.message)}</span>`; btn.disabled = false; }
+  };
+}
+
+async function pageRun(ref) {
+  setTitle(ref);
+  const r = await api("/api/run", {ref});
+  const [project] = ref.split("/");
+  const st = r.statistics, m = r.manifest || {};
+  const tiles = MAIN.map(k => `<div class="tile"><div class="k">${esc(k)}</div><div class="v ${k === "Compounding Annual Return" || k === "Net Profit" ? signClass(st[k]) : ""}">${esc(statVal(st, k) || "—")}</div></div>`).join("");
+  const statsRows = Object.entries(st).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${esc(fmtStat(k, v))}</td></tr>`).join("");
+  const half = Math.ceil(Object.keys(st).length / 2), sr = statsRows.split("</tr>").filter(Boolean).map(x => x + "</tr>");
+  const orders = r.orders.map(o => `<tr><td class="num">${o.id}</td><td>${esc((o.time || "").replace("T", " ").replace("Z", ""))}</td><td>${esc(o.symbol)}</td>
+      <td>${esc(o.type)}</td><td class="num ${o.quantity < 0 ? "neg" : "pos"}">${full.format(o.quantity)}</td><td class="num">${full.format(o.price)}</td>
+      <td class="num">${won(o.value)}</td><td>${esc(o.status)}</td><td class="muted">${esc(o.tag)}</td></tr>`).join("");
+  app.innerHTML = `<div class="crumbs"><a href="#/">Workspace</a> / <a href="${href("project", project)}">${esc(project)}</a> /</div>
+    <h1>${esc(ref.split("/").slice(1).join("/"))}</h1>
+    <div class="tiles">${tiles}</div>
+    <div class="panel"><h2>Equity</h2>${legend([{label: "Strategy"}, {label: "KOSPI 200 (scaled to start equity)", color: COLORS[1]}])}<div class="chart" id="eq"></div></div>
+    <div class="panel"><h2>Drawdown</h2><div class="chart" id="dd"></div></div>
+    <div class="panel"><div class="tabs"><a data-t="stats" class="on">Statistics</a><a data-t="orders">Orders (${r.orders.length})</a><a data-t="log">Log</a><a data-t="manifest">Run record</a></div>
+      <div data-p="stats" class="grid"><table>${sr.slice(0, half).join("")}</table><table>${sr.slice(half).join("")}</table></div>
+      <div data-p="orders" style="display:none" class="scroll"><table><tr><th class="num">#</th><th>Time (UTC)</th><th>Symbol</th><th>Type</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Value</th><th>Status</th><th>Tag</th></tr>${orders}</table></div>
+      <div data-p="log" style="display:none"><pre>${esc(r.log.join("\n"))}</pre><div class="row" style="margin-top:8px"><a id="console">Show LEAN console output</a></div></div>
+      <div data-p="manifest" style="display:none">${Object.keys(m).length ? `<table>${Object.entries(m).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${typeof v === "object" ? `<pre>${esc(JSON.stringify(v, null, 2))}</pre>` : esc(v)}</td></tr>`).join("")}</table>` : '<p class="muted">No manifest (run made before klean 0.2).</p>'}
+        <p class="muted">Folder: ${esc(r.folder)}</p></div>
+    </div>`;
+  lineChart(document.getElementById("eq"), [{label: "Strategy", points: r.equity}, {label: "KOSPI 200", points: r.benchmark, color: COLORS[1], dashed: true}], {yFmt: v => "₩" + compact.format(v)});
+  lineChart(document.getElementById("dd"), [{label: "Drawdown", points: r.drawdown.map(([t, v]) => [t, -Math.abs(v)]), color: COLORS[5]}], {height: 160, yFmt: v => v.toFixed(1) + "%", area: true, zero: true});
+  app.querySelectorAll(".tabs a").forEach(a => a.onclick = () => {
+    app.querySelectorAll(".tabs a").forEach(x => x.classList.toggle("on", x === a));
+    app.querySelectorAll("[data-p]").forEach(p => p.style.display = p.dataset.p === a.dataset.t ? (p.classList.contains("grid") ? "grid" : "block") : "none");
+  });
+  document.getElementById("console").onclick = async () => {
+    const c = await api("/api/log", {ref, console: 1, tail: 400}); app.querySelector('[data-p="log"] pre').textContent = c.lines.join("\n"); };
+}
+
+async function pageCompare(refs) {
+  setTitle("Compare");
+  if (refs.length < 2) {
+    const w = await api("/api/workspace");
+    const lists = await Promise.all(w.projects.filter(p => p.runs).map(p => api("/api/project", {name: p.name})));
+    const rows = lists.flatMap(p => p.runs.filter(r => r.ok).map(r => `<tr><td><input type="checkbox" value="${esc(r.ref)}"></td><td>${esc(p.name)}</td>
+        <td><a href="${href("run", r.ref)}">${esc(r.name)}</a></td><td class="num">${esc(r.stats["Compounding Annual Return"])}</td><td class="num">${esc(statVal(r.stats, "End Equity"))}</td></tr>`)).join("");
+    app.innerHTML = `<h1>Compare runs</h1><div class="panel"><div class="row" style="justify-content:space-between"><h2>Choose two or more runs</h2><button id="cmp" disabled>Compare</button></div>
+      <div class="scroll"><table><tr><th></th><th>Project</th><th>Run</th><th class="num">CAGR</th><th class="num">End equity</th></tr>${rows}</table></div></div>`;
+    const boxes = () => [...app.querySelectorAll("input:checked")].map(b => b.value);
+    app.querySelectorAll("input").forEach(b => b.onchange = () => document.getElementById("cmp").disabled = boxes().length < 2);
+    document.getElementById("cmp").onclick = () => location.hash = "#/compare?" + boxes().map(r => "ref=" + encodeURIComponent(r)).join("&");
+    return;
+  }
+  const c = await api("/api/compare", {ref: refs, all: 1});
+  const v = c.verdict;
+  const head = c.header.slice(1, -1).map((h, i) => `<th class="num"><a href="${href("run", h)}" style="color:${COLORS[i % COLORS.length]}">${esc(h)}</a></th>`).join("");
+  const rows = c.rows.map(r => `<tr class="${r.at(-1) ? "diff" : ""}"><td>${esc(r[0])}</td>${r.slice(1, -1).map(x => `<td class="num">${esc(fmtStat(r[0], x))}</td>`).join("")}<td>${esc(r.at(-1))}</td></tr>`).join("");
+  app.innerHTML = `<div class="crumbs"><a href="#/compare">Compare</a> /</div>
+    <h1>Comparison ${v.identical ? '<span class="badge ok">IDENTICAL</span>' : '<span class="badge no">DIFFERENT</span>'}</h1>
+    <p class="muted">Equity curves: ${v.equity_curves_identical === true ? "identical" : v.equity_curves_identical === false ? "different" : "not available"}${v.differing.length ? " · differing statistics: " + v.differing.map(esc).join(", ") : ""}</p>
+    <div class="panel"><h2>Equity</h2>${legend(c.curves)}<div class="chart" id="eq"></div></div>
+    <div class="panel"><h2>Statistics</h2><div class="scroll"><table><tr><th>Statistic</th>${head}<th></th></tr>${rows}</table></div></div>`;
+  lineChart(document.getElementById("eq"), c.curves.map((cv, i) => ({label: cv.label, points: cv.points, dashed: i > 0})), {yFmt: v => "₩" + compact.format(v)});
+}
+
+// ------------------------------------------------------------------ router
+async function route() {
+  clearTimeout(pollTimer);
+  const [path, query] = location.hash.slice(1).split("?");
+  const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
+  try {
+    if (!TOKEN) throw new Error("Open the URL printed by `klean gui` (it includes the access token).");
+    if (parts[0] === "project") await pageProject(parts[1]);
+    else if (parts[0] === "run") await pageRun(parts.slice(1).join("/"));
+    else if (parts[0] === "compare") await pageCompare(new URLSearchParams(query || "").getAll("ref"));
+    else await pageWorkspace();
+    if (!document.getElementById("ws").textContent) api("/api/workspace").then(w => document.getElementById("ws").textContent = w.root).catch(() => {});
+  } catch (e) { error(e); }
+}
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
