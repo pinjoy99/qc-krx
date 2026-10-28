@@ -2,9 +2,11 @@
 
 1. Python: byte-compile the project (syntax check) and install its requirements.txt into the
    Python 3.11 environment. C#: `dotnet build` the project against the LEAN build's DLLs.
-2. Run LEAN's launcher with the workspace's data folder and a new results folder
-   ``<project>/backtests/<yyyy-MM-dd_HH-mm-ss>/``.
-3. Print the main statistics from ``<Algorithm>-summary.json``.
+2. Write the run's LEAN config (LEAN's Launcher/config.json + the workspace's and the run's extra
+   keys) into the results folder, and run LEAN's launcher with it, the workspace's data folder and
+   the results folder (default ``<project>/backtests/<yyyy-MM-dd_HH-mm-ss>[_<name>]/``).
+3. Write ``manifest.json`` (what was run, with which code, engine and data) and print the main
+   statistics from ``<Algorithm>-summary.json``.
 """
 
 from __future__ import annotations
@@ -12,25 +14,84 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import platform
+import re
 import subprocess
 from pathlib import Path
 
-from klean import projects
-from klean.workspace import KleanError, Workspace, dotnet, run, site_packages, venv_python
+from klean import __version__, projects, results
+from klean.workspace import (REPO_ROOT, KleanError, Workspace, dotnet, git_commit, run, site_packages,
+                             venv_python)
 
-SUMMARY_KEYS = ("Total Orders", "Compounding Annual Return", "Drawdown", "Sharpe Ratio", "Net Profit",
-                "Alpha", "Beta", "Total Fees", "End Equity")
+SUMMARY_KEYS = results.MAIN_KEYS
 
 
-def launcher_args(ws: Workspace, language: str, location: Path, cls: str, results: Path,
-                  parameters: dict[str, str]) -> list[str]:
-    args = [dotnet(), "QuantConnect.Lean.Launcher.dll",
-            "--algorithm-type-name", cls,
-            "--algorithm-language", "Python" if language == "python" else "CSharp",
-            "--algorithm-location", str(location),
-            "--data-folder", f"{ws.data}/",
-            "--results-destination-folder", str(results),
-            "--close-automatically", "true"]
+def strip_json_comments(text: str) -> str:
+    """LEAN's config.json has // and /* */ comments and trailing commas (Json.NET accepts them)."""
+    out, i, n, in_str = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        out.append(c)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def write_run_config(ws: Workspace, results_dir: Path, extra: dict[str, str]) -> Path:
+    """LEAN's launcher config with ``extra`` keys on top, as ``<results>/config.json``."""
+    base = ws.launcher_dir / "config.json"
+    if not base.exists():
+        raise KleanError(f"{base} not found: is lean_root a built LEAN clone?")
+    cfg = json.loads(strip_json_comments(base.read_text(encoding="utf-8")))
+    for k, v in extra.items():
+        cfg[k] = _value(v)
+    path = results_dir / "config.json"
+    path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _value(v):
+    """'true' -> True, '12' -> 12, '1.5' -> 1.5, JSON objects/lists parsed, else the string."""
+    if not isinstance(v, str):
+        return v
+    try:
+        return json.loads(v)
+    except ValueError:
+        return v
+
+
+def launcher_args(ws: Workspace, language: str, location: Path, cls: str, results_dir: Path,
+                  parameters: dict[str, str], config: Path | None = None, backtest_name: str = "") -> list[str]:
+    args = [dotnet(), "QuantConnect.Lean.Launcher.dll"]
+    if config:
+        args += ["--config", str(config)]
+    args += ["--algorithm-type-name", cls,
+             "--algorithm-language", "Python" if language == "python" else "CSharp",
+             "--algorithm-location", str(location),
+             "--data-folder", f"{ws.data}/",
+             "--results-destination-folder", str(results_dir),
+             "--close-automatically", "true"]
+    if backtest_name:
+        args += ["--backtest-name", backtest_name]
     if parameters:
         bad = [k for k, v in parameters.items() if any(c in k + v for c in ",:")]
         if bad:
@@ -46,7 +107,8 @@ def python_env(ws: Workspace) -> dict[str, str]:
     return {"PYTHONNET_PYDLL": ws.python_dll, "PYTHONPATH": site_packages(ws.python_venv)}
 
 
-def prepare(ws: Workspace, project: Path, language: str) -> tuple[Path, str, dict[str, str]]:
+def prepare(ws: Workspace, project: Path, language: str, build_config: str = "Release"
+            ) -> tuple[Path, str, dict[str, str]]:
     """Compile/check the project; return (algorithm location, class name, extra environment)."""
     if language == "python":
         env = python_env(ws)
@@ -57,33 +119,74 @@ def prepare(ws: Workspace, project: Path, language: str) -> tuple[Path, str, dic
             run([py, "-m", "pip", "install", "-q", "-r", str(project / "requirements.txt")])
         return project / "main.py", projects.python_algorithm_class(project / "main.py"), env
     csproj = sorted(project.glob("*.csproj"))[0]
-    run([dotnet(), "build", str(csproj), "-c", "Release", "-nologo", "-v", "q",
-         f"-p:LeanBin={ws.launcher_dir}", "-o", str(project / "bin" / "Release")])
-    return project / "bin" / "Release" / f"{csproj.stem}.dll", projects.csharp_algorithm_class(project), {}
+    out = project / "bin" / build_config
+    run([dotnet(), "build", str(csproj), "-c", build_config, "-nologo", "-v", "q",
+         f"-p:LeanBin={ws.launcher_dir}", "-o", str(out)])
+    return out / f"{csproj.stem}.dll", projects.csharp_algorithm_class(project), {}
 
 
-def backtest(ws: Workspace, project: Path, parameters: dict[str, str] | None = None) -> dict:
+def results_folder(project: Path, output: Path | None, name: str) -> Path:
+    if output:
+        out = output.expanduser().resolve()
+        if out.exists() and any(out.iterdir()):
+            raise KleanError(f"{out} already exists and isn't empty")
+        return out
+    stamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") if name else ""
+    return project / "backtests" / (f"{stamp}_{safe}" if safe else stamp)
+
+
+def backtest(ws: Workspace, project: Path, parameters: dict[str, str] | None = None, *,
+             extra_config: dict[str, str] | None = None, output: Path | None = None,
+             backtest_name: str = "", build_config: str = "Release") -> dict:
     project = project.resolve()
     if not project.is_dir():
         raise KleanError(f"{project} is not a project folder")
     if not (ws.launcher_dir / "QuantConnect.Lean.Launcher.dll").exists():
         raise KleanError(f"no LEAN build in {ws.launcher_dir}: run `klean install-lean`")
+    parameters = parameters or {}
     language = projects.language_of(project)
-    location, cls, env = prepare(ws, project, language)
-    results = project / "backtests" / dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    results.mkdir(parents=True)
-    args = launcher_args(ws, language, location, cls, results, parameters or {})
-    print(f"klean: backtesting {cls} ({language}) -> {results}", flush=True)
-    with open(results / "console.txt", "w", encoding="utf-8") as log:
+    location, cls, env = prepare(ws, project, language, build_config)
+    results_dir = results_folder(project, output, backtest_name)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    lean_config = {**ws.lean_config, **(extra_config or {})}
+    config = write_run_config(ws, results_dir, lean_config)
+    args = launcher_args(ws, language, location, cls, results_dir, parameters, config, backtest_name)
+    print(f"klean: backtesting {cls} ({language}) -> {results_dir}", flush=True)
+    started = dt.datetime.now(dt.timezone.utc)
+    with open(results_dir / "console.txt", "w", encoding="utf-8") as log:
         proc = subprocess.run(args, cwd=ws.launcher_dir, env={**os.environ, **env},
                               stdout=log, stderr=subprocess.STDOUT)
-    summary = results / f"{cls}-summary.json"
-    if not summary.exists():
-        tail = (results / "console.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
-        raise KleanError(f"backtest failed (exit {proc.returncode}), no {summary.name}. "
-                         f"Last lines of {results / 'console.txt'}:\n" + "\n".join(tail))
+    finished = dt.datetime.now(dt.timezone.utc)
+    summary = results.summary_file(results_dir, required=False)
+    write_manifest(ws, project, results_dir, language=language, algorithm=cls, parameters=parameters,
+                   lean_config=lean_config, backtest_name=backtest_name, build_config=build_config,
+                   started=started, finished=finished, exit_code=proc.returncode, ok=summary is not None)
+    if summary is None:
+        tail = (results_dir / "console.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+        raise KleanError(f"backtest failed (exit {proc.returncode}), no *-summary.json. "
+                         f"Last lines of {results_dir / 'console.txt'}:\n" + "\n".join(tail))
     # Python runs can abort at exit after writing results (pythonnet GIL shutdown); the summary is
     # what counts, so a non-zero exit code with a summary is a success.
-    stats = json.loads(summary.read_text(encoding="utf-8")).get("statistics", {})
-    return {"results": str(results), "exit_code": proc.returncode,
+    stats = results.statistics(results_dir)
+    return {"results": str(results_dir), "exit_code": proc.returncode,
             "statistics": {k: stats[k] for k in SUMMARY_KEYS if k in stats}}
+
+
+def write_manifest(ws: Workspace, project: Path, results_dir: Path, **run_info) -> None:
+    """manifest.json: enough to say what produced the results (docs/EXPERT.md §8)."""
+    started, finished = run_info.pop("started"), run_info.pop("finished")
+    manifest = {
+        "klean": __version__,
+        "project": project.name,
+        **run_info,
+        "started_utc": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "seconds": round((finished - started).total_seconds(), 1),
+        "qc_krx_commit": git_commit(REPO_ROOT),
+        "lean_commit": git_commit(Path(ws.lean_root)),
+        "data_last_date": results.last_data_date(ws),
+        "python": ws.python_venv if run_info.get("language") == "python" else "",
+        "host": platform.platform(),
+        "files": results.project_files(project),
+    }
+    (results_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

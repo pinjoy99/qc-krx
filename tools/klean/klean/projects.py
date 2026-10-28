@@ -12,6 +12,10 @@ from klean.workspace import REPO_ROOT, KleanError, Workspace
 
 PY_MODELS = REPO_ROOT / "examples" / "python" / "krx_models.py"
 CS_MODELS = REPO_ROOT / "examples" / "KrxModels.cs"
+# Example strategies used as templates (copied as they are, class name included).
+PY_TOP_MARKET_CAP = REPO_ROOT / "examples" / "python" / "krx_top_market_cap" / "main.py"
+CS_TOP_MARKET_CAP = REPO_ROOT / "examples" / "KrxTopMarketCapAlgorithm.cs"
+TEMPLATES = ("buy-hold", "top-market-cap", "empty")
 
 PY_TEMPLATE = '''# region imports
 from AlgorithmImports import *
@@ -35,6 +39,57 @@ class {cls}(QCAlgorithm):
     def on_data(self, data: Slice):
         if not self.portfolio.invested:
             self.set_holdings(self.samsung, 0.9)
+'''
+
+PY_EMPTY = '''# region imports
+from AlgorithmImports import *
+from krx_models import KrxBoards, krx_benchmark, krx_initialize
+# endregion
+
+
+class {cls}(QCAlgorithm):
+    """KRX strategy (klean, empty template): the required KRX settings, no trading yet."""
+
+    def initialize(self):
+        self.set_time_zone("Asia/Seoul")
+        self.set_account_currency("KRW")
+        self.set_start_date(2024, 1, 2)
+        self.set_cash(100_000_000)
+        boards = KrxBoards.load()
+        self.set_security_initializer(lambda security: krx_initialize(security, boards))
+        self.set_benchmark(krx_benchmark("kospi200"))
+
+    def on_data(self, data: Slice):
+        pass
+'''
+
+CS_EMPTY = '''using QuantConnect.Data;
+
+namespace QuantConnect.Algorithm.CSharp
+{{
+    /// <summary>KRX strategy (klean, empty template): the required KRX settings, no trading yet.</summary>
+    public class {cls} : QCAlgorithm
+    {{
+        public override void Initialize()
+        {{
+            SetTimeZone("Asia/Seoul");
+            SetAccountCurrency("KRW");
+            SetStartDate(2024, 1, 2);
+            SetCash(100_000_000);
+            var boards = KrxBoards.Load();
+            SetSecurityInitializer(security =>
+            {{
+                security.SetFeeModel(new KrxFeeModel(boards));
+                security.PriceVariationModel = new KrxPriceVariationModel(boards);
+            }});
+            SetBenchmark(KrxIndex.Benchmark("kospi200"));
+        }}
+
+        public override void OnData(Slice slice)
+        {{
+        }}
+    }}
+}}
 '''
 
 CS_TEMPLATE = '''using QuantConnect.Data;
@@ -102,21 +157,40 @@ def class_name(name: str) -> str:
     return cls if not cls[0].isdigit() else "Krx" + cls
 
 
-def create(ws: Workspace, name: str, language: str) -> Path:
+def create(ws: Workspace, name: str, language: str, template: str = "buy-hold") -> Path:
+    if language not in ("python", "csharp"):
+        raise KleanError(f"unknown language {language!r} (python or csharp)")
+    if template not in TEMPLATES:
+        raise KleanError(f"unknown template {template!r} ({', '.join(TEMPLATES)})")
     project = ws.root / name
     if project.exists():
         raise KleanError(f"{project} already exists")
     cls = class_name(Path(name).name)
     project.mkdir(parents=True)
     if language == "python":
-        (project / "main.py").write_text(PY_TEMPLATE.format(cls=cls), encoding="utf-8")
+        main = {"buy-hold": PY_TEMPLATE.format(cls=cls), "empty": PY_EMPTY.format(cls=cls),
+                "top-market-cap": PY_TOP_MARKET_CAP.read_text(encoding="utf-8")}[template]
+        (project / "main.py").write_text(main, encoding="utf-8")
         shutil.copy(PY_MODELS, project / "krx_models.py")
-    elif language == "csharp":
-        (project / "Main.cs").write_text(CS_TEMPLATE.format(cls=cls), encoding="utf-8")
+    else:
+        main = {"buy-hold": CS_TEMPLATE.format(cls=cls), "empty": CS_EMPTY.format(cls=cls),
+                "top-market-cap": CS_TOP_MARKET_CAP.read_text(encoding="utf-8")}[template]
+        (project / "Main.cs").write_text(main, encoding="utf-8")
         shutil.copy(CS_MODELS, project / "KrxModels.cs")
         (project / f"{cls}.csproj").write_text(CSPROJ_TEMPLATE.format(lean_bin=ws.launcher_dir), encoding="utf-8")
-    else:
-        raise KleanError(f"unknown language {language!r} (python or csharp)")
+    return project
+
+
+def delete(ws: Workspace, name: str) -> Path:
+    """Remove a project folder (with its backtests). Only folders inside the workspace that are
+    projects (main.py or a .csproj) can be deleted."""
+    project = (ws.root / name).resolve()
+    if project == ws.root or ws.root not in project.parents:
+        raise KleanError(f"{project} isn't inside the workspace {ws.root}")
+    if not project.is_dir():
+        raise KleanError(f"{project} doesn't exist")
+    language_of(project)  # raises unless it's a project
+    shutil.rmtree(project)
     return project
 
 

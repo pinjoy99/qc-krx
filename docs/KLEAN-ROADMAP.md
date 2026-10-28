@@ -26,14 +26,14 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 |---|---|---|---|
 | `lean init` | workspace, `lean.json`, downloads LEAN's `Data/` (incl. vendor sample data) | ✅ `klean init` | Copies only LEAN's config files by default; `--sample-data` optional |
 | `lean login` / `logout` / `whoami` | QuantConnect account | ➖ | No account needed |
-| `lean config get/set/list/unset` | edit `lean.json` | 🔜 P1 `klean config …` | Same verbs on `klean.json` (lean_root, python env, defaults such as commission rate, start cash) |
-| `lean create-project --language` | project from a template | ✅ `klean project-create` | P1: `--template` (buy-hold, top-market-cap universe, empty) |
-| `lean delete-project` | delete a project | 🔜 P1 `klean project-delete` | Asks for confirmation; refuses outside the workspace |
+| `lean config get/set/list/unset` | edit `lean.json` | ✅ `klean config …` (P1) | Same verbs on `klean.json` (lean_root, python env, defaults such as commission rate, start cash) |
+| `lean create-project --language` | project from a template | ✅ `klean project-create` | ✅ P1: `--template` (buy-hold, top-market-cap universe, empty) |
+| `lean delete-project` | delete a project | ✅ `klean project-delete` (P1) | Asks for confirmation; refuses outside the workspace |
 | `lean backtest` | compile + run in Docker | ✅ `klean backtest` | P1 options below |
-| `  --output` | results folder | 🔜 P1 | Default stays `<project>/backtests/<timestamp>/` |
-| `  --backtest-name` | name the run | 🔜 P1 | Folder suffix + `backtest-name` in LEAN |
-| `  --extra-config` | extra LEAN config keys | 🔜 P1 | `--extra-config KEY VALUE`, written to a per-run config file |
-| `  --release` / `--debug` | C# build config / attach a debugger | 🔜 P1 `--release`, P3 `--debug` | P3: VS Code / Rider attach for C#, `debugpy` for Python |
+| `  --output` | results folder | ✅ (P1) | Default stays `<project>/backtests/<timestamp>/` |
+| `  --backtest-name` | name the run | ✅ (P1) | Folder suffix + `backtest-name` in LEAN |
+| `  --extra-config` | extra LEAN config keys | ✅ (P1) | `--extra-config KEY VALUE`, written to a per-run config file |
+| `  --release` / `--debug` | C# build config / attach a debugger | ✅ P1 `--build-config`, 🔜 P3 `--debug` | P3: VS Code / Rider attach for C#, `debugpy` for Python |
 | `  --python-venv` | Python env | ✅ (klean.json) | — |
 | `  --detach` | run in the background | 🔜 P2 | Background process + `klean logs` to follow it |
 | `  --download-data`, `--data-provider-historical`, `--data-purchase-limit` | QuantConnect / vendor data | ➖ | Data comes from the qc-krx pipeline (`klean data install`) |
@@ -41,8 +41,8 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 | `lean optimize` | parameter search via Optimizer.Launcher | 🔜 P2 `klean optimize` | Grid / Euler strategies, `--parameter NAME MIN MAX STEP`, `--target`, `--target-direction`, `--constraint`, `--max-concurrent-backtests`, `--estimate` |
 | `lean report` | HTML/PDF report from backtest results | 🔜 P2 `klean report` | Build LEAN's `Report` project once; run it on a results folder; check that won (KRW) amounts and the KOSPI 200 benchmark show correctly |
 | `lean research` | Jupyter with QuantBook (Docker research image) | 🔜 P3 `klean research` | Jupyter in the Python 3.11 env with LEAN's `Research/` (QuantBook) on the source build; needs investigation (kernel start-up, pythonnet) |
-| `lean logs` | show a run's log | 🔜 P1 `klean logs` | Latest (or `--backtest NAME`) `-log.txt` / `console.txt` of a project |
-| `lean build` | build custom Docker images | ➖ / 🔜 P1 | No images. Equivalent: `klean lean update [--commit]` (fetch, rebuild, re-check) |
+| `lean logs` | show a run's log | ✅ `klean logs` (P1) | Latest (or `--backtest NAME`) `-log.txt` / `console.txt` of a project |
+| `lean build` | build custom Docker images | ➖ / ✅ P1 | No images. Equivalent: `klean lean update [--commit]` (fetch, rebuild, re-check) |
 | `lean library add/remove` | share code between projects | 🔜 P2 `klean library …` | Shared folders on the Python path / C# project references. First use: one shared copy of the KRX models instead of a copy per project |
 | `lean data download` | buy/download QuantConnect data | ➖ | Paid QuantConnect data |
 | `lean data generate` | random synthetic data | ➖ (maybe later) | Low value for KRX; real data is available |
@@ -59,19 +59,21 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 |---|---|---|
 | `klean doctor` | check .NET, LEAN build, data, Python env | ✅ |
 | `klean data install` | lean.zip / data root into the workspace + KRX market config | ✅ |
-| `klean data status` | KRX data range, last trading day, number of securities, dividend snapshot | P1 |
-| Run manifest (`manifest.json` in every results folder) | reproducibility: qc-krx commit, LEAN commit, data last date, dividend snapshot, parameters, commission rate (EXPERT.md §8 checklist, automatic) | P1 |
-| `klean compare RUN_A RUN_B` | statistics side by side; used for the C#/Python parity checks and before/after model changes | P1 |
+| `klean data status` | KRX data range, last trading day, securities (active / delisted), universe files, indices, market hours | ✅ P1 |
+| Run manifest (`manifest.json` in every results folder) | reproducibility: qc-krx and LEAN commits, data last date, parameters, LEAN config, build config, sha256 of the project files (EXPERT.md §8 checklist, automatic) | ✅ P1 |
+| `klean compare RUN_A RUN_B` | statistics side by side; used for the C#/Python parity checks and before/after model changes | ✅ P1 |
 | `klean check-models` | run the `CHECK tax/tick` cases in C# and Python and compare | P2 |
 
 ## Phases
 
-### P1 — everyday use (small, mostly klean code)
-- `backtest`: `--output`, `--backtest-name`, `--extra-config`, `--release`; run manifest.
+### P1 — everyday use ✅ done (2026-10-28)
+- `backtest`: `--output`, `--backtest-name`, `--extra-config`, `--build-config Release|Debug`
+  (instead of the CLI's `--release`: klean builds Release by default); run manifest and per-run
+  LEAN config in every results folder.
 - `config get/set/list/unset`, `logs`, `project-delete`, `project-create --template`.
-- `data status`, `compare`, `lean update`.
-- **Done when:** unit tests for each command; the top-20 strategy (Python and C#) still gives the
-  reference result; `compare` reports the two runs as identical.
+- `data status`, `compare`, `lean status` / `lean update`.
+- **Verified:** the top-market-cap template gives the identical result in Python and C#
+  (`klean compare`: IDENTICAL incl. equity curves); 14 klean unit tests. See KLEAN.md.
 
 ### P2 — research workflow
 - `optimize` on `Optimizer.Launcher` (already part of the LEAN build): config generation, results
@@ -110,6 +112,6 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 
 ## Suggested order
 
-P1 first (all small, mostly klean code), then `optimize` and `report` from P2, because parameter
+P1 is done; next `optimize` and `report` from P2, because parameter
 searches and reports are the most common next needs after single backtests. P3 on demand. P4 only
 after the broker plugin exists.

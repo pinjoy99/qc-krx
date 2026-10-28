@@ -229,6 +229,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `ff76f20` | 2026-10-20 | `lean-package`: lean.zip in LEAN's Data layout (`data/equity/krx`, `data/index/krx`); `lean-install --config-only`. Checked: unzipped into a fresh data folder + `--config-only`, the top-20 backtest gave the identical result (₩2,106,541,997.48, 670 orders) |
 | `51902ab` | 2026-10-20 | klean-cli (`klean/`, `pyproject.toml`); beginner's guide Stage 4 uses it; docs/KLEAN.md |
 | `fbc5fc1` | 2026-10-20 | klean made strictly optional: moved to `tools/klean` with its own `pyproject.toml` and tests; the main package installs only `qc-krx`; BEGINNER Stage 4 back to plain commands (re-run on a fresh LEAN build) |
+| (this change) | 2026-10-28 | klean P1 (optional tool): backtest options and run manifest, config, logs, compare, data status, project templates/delete, lean status/update |
 
 ## 8. Security note
 

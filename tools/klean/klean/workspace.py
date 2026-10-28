@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 CONFIG_NAME = "klean.json"
@@ -24,6 +24,10 @@ LEAN_OPTIONAL_FILES = ["alternative/interest-rate/usa/interest-rate.csv"]
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+# klean's own settings in klean.json; any other `klean config` key is a LEAN config key.
+WORKSPACE_KEYS = ("lean_root", "python_venv", "python_dll")
+
+
 class KleanError(Exception):
     pass
 
@@ -34,6 +38,8 @@ class Workspace:
     lean_root: str
     python_venv: str = ""
     python_dll: str = ""
+    # LEAN config keys applied to every backtest of this workspace (like the LEAN CLI's lean.json)
+    lean_config: dict = field(default_factory=dict)
 
     @property
     def data(self) -> Path:
@@ -55,7 +61,8 @@ class Workspace:
         for d in (start, *start.parents):
             if (d / CONFIG_NAME).exists():
                 cfg = json.loads((d / CONFIG_NAME).read_text(encoding="utf-8"))
-                return cls(root=d, **{k: cfg.get(k, "") for k in ("lean_root", "python_venv", "python_dll")})
+                return cls(root=d, **{k: cfg.get(k, "") for k in WORKSPACE_KEYS},
+                           lean_config=dict(cfg.get("lean_config") or {}))
         raise KleanError(f"no {CONFIG_NAME} in {start} or its parents: run `klean init` first")
 
 
@@ -130,3 +137,15 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict | None = None) -> Non
     r = subprocess.run(cmd, cwd=cwd, env={**os.environ, **(env or {})})
     if r.returncode:
         raise KleanError(f"command failed ({r.returncode}): {' '.join(cmd)}")
+
+
+def git_commit(path: Path) -> str:
+    """Commit of the git checkout at ``path`` (+ "-dirty" with uncommitted changes), or ""."""
+    try:
+        head = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(path), "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True).stdout.strip()
+        return head + ("-dirty" if dirty else "")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""

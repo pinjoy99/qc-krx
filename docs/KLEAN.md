@@ -15,11 +15,17 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | (Docker image) | `klean install-python` | Python 3.11 environment with pandas/numpy, for Python strategies |
 | `lean init` | `klean init` | workspace: `klean.json` + `data/` with LEAN's config files only (no vendor sample data) |
 | — | `klean data install lean.zip` | KRX data into `data/` + the KRX market hours and symbol properties |
-| `lean project-create` | `klean project-create` | project with `main.py` / `Main.cs` and the KRX models next to it |
-| `lean backtest` | `klean backtest` | build/check, run LEAN, results in `<project>/backtests/<timestamp>/`, print statistics |
+| — | `klean data status` | KRX data range, securities (active / delisted), universe files, indices, market hours |
+| `lean config get/set/list/unset` | `klean config …` | workspace settings, and LEAN config keys applied to every backtest |
+| `lean project-create` | `klean project-create` | project with `main.py` / `Main.cs` and the KRX models next to it; `--template buy-hold / top-market-cap / empty` |
+| `lean project-delete` | `klean project-delete` | delete a project and its backtests (asks for the name) |
+| `lean backtest` | `klean backtest` | build/check, run LEAN, results in `<project>/backtests/<timestamp>/` with a `manifest.json`, print statistics |
+| `lean logs` | `klean logs` | a run's algorithm log, or LEAN's console output |
+| — | `klean compare` | runs side by side: statistics and equity curves, says IDENTICAL / DIFFERENT |
+| (`lean build`) | `klean lean status` / `klean lean update` | the LEAN commit in use; check out another one and rebuild |
 | — | `klean doctor` | check dotnet, the LEAN build, the data and the Python environment |
 
-Not covered yet: research notebooks, optimization, reports, live trading. Cloud features are out
+Not covered yet: research notebooks, optimization, reports, live trading (roadmap P2–P4). Cloud features are out
 of scope. The plan, command by command against the LEAN CLI: [KLEAN-ROADMAP.md](KLEAN-ROADMAP.md).
 
 ## Install
@@ -86,6 +92,9 @@ forex, …; third-party vendors' prices) unless you add `--sample-data`.
 ```bash
 klean backtest "My First"
 klean backtest "My First" --parameter weight 0.5 --parameter lookback 20
+klean backtest "My First" --backtest-name half-weight --parameter weight 0.5
+klean backtest "My First" --extra-config maximum-data-points-per-chart-series 4000
+klean backtest "My CS" --build-config Debug --output ~/runs/debug-1
 ```
 
 What happens:
@@ -93,9 +102,14 @@ What happens:
    is installed into the Python 3.11 environment. **C#**: `dotnet build` of the project against the
    DLLs of your LEAN build (`<lean_root>/Launcher/bin/Release`; LEAN's own example algorithms
    are not referenced).
-2. LEAN's launcher runs with the workspace's `data/` and a new results folder. The algorithm
-   class is found automatically (the class deriving from `QCAlgorithm`; exactly one per project).
-3. The main statistics from `<Algorithm>-summary.json` are printed.
+2. The run's LEAN config is written to `<results>/config.json`: LEAN's own `Launcher/config.json`
+   plus the workspace's LEAN keys (`klean config set KEY VALUE`) plus `--extra-config KEY VALUE`.
+   Values are read as JSON when possible (`true`, `4000`, `{"a": 1}`), otherwise as text.
+3. LEAN's launcher runs with that config, the workspace's `data/` and the results folder
+   (`<project>/backtests/<yyyy-MM-dd_HH-mm-ss>[_<backtest-name>]/`, or `--output`). The
+   algorithm class is found automatically (the class deriving from `QCAlgorithm`; exactly one per
+   project).
+4. `manifest.json` is written and the main statistics are printed.
 
 Results folder:
 
@@ -106,6 +120,8 @@ Results folder:
 | `<Algorithm>-order-events.json` | orders and fills |
 | `<Algorithm>-log.txt` | your `log()` / `Log()` lines |
 | `console.txt` | LEAN's full console output — look here when something fails |
+| `config.json` | the LEAN config the run used |
+| `manifest.json` | what produced the results: project, language, algorithm class, parameters, LEAN config keys, build config, start time and duration, exit code, **qc-krx and LEAN commits** (`-dirty` = uncommitted changes), **last date of the KRX data**, host, and the sha256 of every project file |
 | `failed-data-requests-*.txt` | files LEAN didn't find (universe files for weekends/holidays are expected) |
 
 Parameters reach the algorithm through `self.get_parameter("weight", "0.9")` /
@@ -114,7 +130,44 @@ Parameters reach the algorithm through `self.get_parameter("weight", "0.9")` /
 Python runs can end with a `GIL must always be released` crash *after* the results are written
 (pythonnet shutdown); klean treats a run with a summary file as successful.
 
-## Verified (2026-10-20, on this project's data)
+A strategy without `set_end_date` / `SetEndDate` runs up to today, so its yearly figures (CAGR,
+Sharpe) change from day to day even when the trades don't. Set an end date when you want runs
+to be comparable over time.
+
+## Comparing runs and reading logs
+
+```bash
+klean compare "My First" "My CS"            # latest run of each project
+klean compare "My First/2026-10-28_20-05" "My First/2026-10-28_20-06-16_renamed"   # by name or prefix
+klean compare ~/runs/debug-1 "My CS" --all  # results folders, all statistics
+klean logs "My First" --tail 20             # algorithm log of the latest run
+klean logs "My First/2026-10-28_20-05" --console
+```
+
+A run is named by a project (its latest run), `PROJECT/RUN` or `PROJECT@RUN` (folder name or a
+unique prefix), or a results folder path. `compare` prints the statistics side by side, marks
+differences with `≠`, compares the equity curves point by point, and ends with `IDENTICAL` or
+`DIFFERENT: …`.
+
+## Workspace settings
+
+```bash
+klean config list
+klean config set python_venv ~/.klean/py311       # also finds its libpython
+klean config set maximum-data-points-per-chart-series 4000   # LEAN key, used by every backtest
+klean config unset maximum-data-points-per-chart-series
+klean data status
+klean lean status                                 # LEAN commit (tested: 80e7843) and build
+klean lean update [--commit C]                    # check out and rebuild; default: the tested commit
+```
+
+`lean_root`, `python_venv` and `python_dll` are klean's own settings; every other key is stored in
+`klean.json` under `lean_config` and passed to LEAN. After `lean update` to another commit, rerun
+a reference backtest and `klean compare` it with an earlier run before relying on the new build.
+`lean status` shows `-dirty` if LEAN's checkout has local changes (for example `lean-install` run
+on `Lean/Data` directly).
+
+## Verified (2026-10-20 and 2026-10-28 for P1, on this project's data)
 
 | Run | Result |
 |---|---|
@@ -122,6 +175,10 @@ Python runs can end with a `GIL must always be released` crash *after* the resul
 | KOSPI top-20 strategy (`examples/`), Python and C#, 2023-02-01 → 2026-10-07 | identical: end equity ₩2,106,541,997.48, 670 orders, fees ₩13,395,456 — the same as running LEAN by hand; 2 min 27 s / 17 s |
 | `--parameter weight 0.45` | end equity ₩214,170,818.79 (vs ₩328,341,636.58 with the default 0.9) |
 | `init` with `--data-zip` on LEAN's original config files | `Equity-krx` market hours and `krx` symbol properties added; LEAN's own files untouched |
+| P1: `--template top-market-cap`, C# vs Python, via `klean compare` | IDENTICAL including equity curves: ₩2,417,175,763.24 |
+| P1: `--extra-config algorithm-id MyRun` | result files renamed `MyRun-*`, so the per-run config reaches LEAN |
+| P1: `project-delete` | asks for the name; refuses `data/` and folders outside the workspace |
+| P1: `lean update` (tested commit) | rebuilt in 94 s, 0 errors |
 
 ## Moving projects to or from the LEAN CLI
 
