@@ -230,7 +230,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `51902ab` | 2026-10-20 | klean-cli (`klean/`, `pyproject.toml`); beginner's guide Stage 4 uses it; docs/KLEAN.md |
 | `fbc5fc1` | 2026-10-20 | klean made strictly optional: moved to `tools/klean` with its own `pyproject.toml` and tests; the main package installs only `qc-krx`; BEGINNER Stage 4 back to plain commands (re-run on a fresh LEAN build) |
 | `14cbbfe` | 2026-10-28 | klean P1 (optional tool): backtest options and run manifest, config, logs, compare, data status, project templates/delete, lean status/update |
-| (this change) | 2026-10-28 | `klean gui` (optional tool): local web page, standard library only, token-protected, checked in Chromium |
+| `471fff9` | 2026-10-28 | `klean gui` (optional tool): local web page, standard library only, token-protected, checked in Chromium |
 
 ## 8. Security note
 
