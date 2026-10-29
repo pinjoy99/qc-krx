@@ -8,6 +8,7 @@
     klean project-create NAME [--language] [--template] project with the KRX models next to it
     klean project-delete NAME                           delete a project and its backtests
     klean backtest NAME [--parameter K V] [--extra-config K V] [--backtest-name N] [--output DIR]
+    klean optimize NAME --parameter P MIN MAX STEP [...] [--target T] [--constraint "Drawdown < 25"]
     klean logs NAME|RUN [--console] [--tail N]          a run's algorithm log (or LEAN's console output)
     klean compare RUN RUN [...] [--all]                 statistics and equity curves side by side
     klean config list | get KEY | set KEY VALUE | unset KEY
@@ -156,6 +157,32 @@ def cmd_project_delete(args) -> int:
             print("not deleted")
             return 1
     print(f"deleted {projects.delete(ws, args.name)}")
+    return 0
+
+
+def cmd_optimize(args) -> int:
+    from klean import optimize
+    project = Path(args.project).expanduser()
+    if project.exists():
+        ws = Workspace.load(project)
+    else:
+        ws = Workspace.load(Path.cwd())
+        project = ws.root / project
+    s = optimize.optimize(ws, project, [tuple(p) for p in args.parameter or []], target=args.target,
+                          direction=args.target_direction, constraints=args.constraint,
+                          max_concurrent=args.max_concurrent_backtests,
+                          extra_config=dict(args.extra_config or []), name=args.name or "",
+                          build_config=args.build_config, max_backtests=args.max_backtests, estimate=args.estimate)
+    if args.estimate:
+        print(f"{s['backtests']} backtests, {s['concurrent']} at a time")
+        return 0
+    header, rows = optimize.ranking(s)
+    print("\n" + results.format_table(header, rows))
+    print(f"\n{len(s['runs'])} backtests in {s['seconds']} s -> {s['folder']}")
+    if s["best"]:
+        print(f"best ({s['direction']} {s['target']}): {Path(s['folder']) / s['best']}")
+    else:
+        print("no run met the constraints")
     return 0
 
 
@@ -332,6 +359,22 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--output", help="results folder (default: <project>/backtests/<timestamp>[_<name>])")
     s.add_argument("--build-config", choices=["Release", "Debug"], default="Release", help="C# build configuration")
     s.set_defaults(func=cmd_backtest)
+
+    s = sub.add_parser("optimize", help="grid search over parameters; results in <project>/optimizations/<timestamp>/")
+    s.add_argument("project")
+    s.add_argument("--parameter", nargs=4, action="append", metavar=("NAME", "MIN", "MAX", "STEP"),
+                   help="parameter range, inclusive (repeatable); read it with get_parameter / GetParameter")
+    s.add_argument("--target", default="Sharpe Ratio", help="statistic to optimize (default: Sharpe Ratio)")
+    s.add_argument("--target-direction", choices=["max", "min"], default="max")
+    s.add_argument("--constraint", action="append",
+                   help="'STATISTIC OP VALUE', values as shown in the statistics (25 for 25%%), repeatable")
+    s.add_argument("--max-concurrent-backtests", type=int, default=0, help="default: half the CPU cores")
+    s.add_argument("--max-backtests", type=int, default=500, help="refuse larger grids (default: 500)")
+    s.add_argument("--estimate", action="store_true", help="only count the backtests")
+    s.add_argument("--extra-config", nargs=2, action="append", metavar=("KEY", "VALUE"))
+    s.add_argument("--name", help="name for the optimization (folder suffix)")
+    s.add_argument("--build-config", choices=["Release", "Debug"], default="Release")
+    s.set_defaults(func=cmd_optimize)
 
     s = sub.add_parser("logs", help="show a run's algorithm log (default: the project's latest run)")
     s.add_argument("run", help="project, PROJECT/RUN (name or prefix) or a results folder")

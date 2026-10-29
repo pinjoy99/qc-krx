@@ -116,9 +116,40 @@ def api_project(ws: Workspace, q: dict) -> dict:
     p = inside(ws, ws.root / q["name"][0])
     lang = projects.language_of(p)
     files = sorted(f.relative_to(p).as_posix() for f in p.rglob("*") if f.is_file()
-                   and f.relative_to(p).parts[0] not in ("backtests", "bin", "obj", "__pycache__"))
+                   and f.relative_to(p).parts[0] not in results.OUTPUT_DIRS)
     return {"name": p.name, "language": lang, "files": files,
-            "runs": [run_row(r) for r in reversed(results.runs(p))]}
+            "runs": [run_row(r) for r in reversed(results.runs(p))],
+            "optimizations": [opt_row(o) for o in reversed(optimizations(p))]}
+
+
+def optimizations(project: Path) -> list[Path]:
+    d = project / "optimizations"
+    return sorted(o for o in d.iterdir() if (o / "optimization.json").exists()) if d.is_dir() else []
+
+
+def opt_row(opt: Path) -> dict:
+    o = json.loads((opt / "optimization.json").read_text(encoding="utf-8"))
+    best = next((r for r in o["runs"] if r["folder"] == o.get("best")), None)
+    return {"name": opt.name, "target": o["target"], "direction": o["direction"], "runs": len(o["runs"]),
+            "parameters": [p["name"] for p in o["parameters"]], "seconds": o.get("seconds"),
+            "best": {"parameters": best["parameters"], "target": best["stats"].get(o["target"]) or best["target_value"]}
+            if best else None}
+
+
+def api_optimization(ws: Workspace, q: dict) -> dict:
+    from klean.optimize import ranked, ranking
+    project = inside(ws, ws.root / q["project"][0])
+    name = q["name"][0]
+    opt = inside(ws, project / "optimizations" / name)
+    if "/" in name or name.startswith(".") or not (opt / "optimization.json").exists():
+        raise KleanError(f"no optimization {name!r} in {project.name}")
+    o = json.loads((opt / "optimization.json").read_text(encoding="utf-8"))
+    header, rows = ranking(o)
+    by_index = sorted(o["runs"], key=lambda r: r["index"])
+    refs = {r["folder"]: f"{project.name}/optimizations/{opt.name}/{r['folder']}" for r in o["runs"]}
+    order = [r["folder"] for r in ranked(o)]   # table rows are in ranking order
+    return {**o, "name": opt.name, "header": header, "rows": rows, "row_refs": [refs[f] for f in order],
+            "refs": refs, "points": [[r["parameters"], r["target_value"], r["ok"] and r["passes"]] for r in by_index]}
 
 
 def api_run(ws: Workspace, q: dict) -> dict:
@@ -142,7 +173,7 @@ def api_run(ws: Workspace, q: dict) -> dict:
         log = results.log_text(run).splitlines()[-200:]
     except KleanError:
         log = []
-    return {"ref": f"{run.parent.parent.name}/{run.name}", "folder": str(run),
+    return {"ref": run.relative_to(ws.root).as_posix(), "folder": str(run),
             "statistics": results.statistics(run), "runtime": full.get("runtimeStatistics", {}),
             "equity": downsample(equity), "benchmark": downsample(bench), "drawdown": downsample(drawdown),
             "orders": orders, "manifest": manifest(run), "log": log}
@@ -156,7 +187,8 @@ def api_compare(ws: Workspace, q: dict) -> dict:
     header, rows, verdict = results.compare(runs, all_keys="all" in q)
     curves = [{"label": results.label(r), "points": downsample([list(p) for p in results.equity_curve(r)])}
               for r in runs]
-    return {"header": header, "rows": rows, "verdict": verdict, "curves": curves}
+    return {"header": header, "rows": rows, "verdict": verdict, "curves": curves,
+            "refs": [r.relative_to(ws.root).as_posix() for r in runs]}
 
 
 def api_log(ws: Workspace, q: dict) -> dict:
@@ -210,7 +242,7 @@ class Jobs:
 
 def make_handler(ws: Workspace, token: str, jobs: Jobs):
     gets = {"/api/workspace": api_workspace, "/api/project": api_project, "/api/run": api_run,
-            "/api/compare": api_compare, "/api/log": api_log}
+            "/api/compare": api_compare, "/api/log": api_log, "/api/optimization": api_optimization}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = f"klean-gui/{__version__}"

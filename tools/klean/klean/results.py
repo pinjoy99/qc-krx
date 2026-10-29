@@ -92,6 +92,8 @@ def compare(run_paths: list[Path], all_keys: bool = False) -> tuple[list[str], l
 
 
 def label(run: Path) -> str:
+    if run.parent.parent.name == "optimizations":       # <project>/optimizations/<opt>/<run>
+        return f"{run.parents[2].name}/{run.parent.name}/{run.name}"
     return f"{run.parent.parent.name}/{run.name}"
 
 
@@ -107,12 +109,16 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+# Folders inside a project that hold outputs, not source code.
+OUTPUT_DIRS = ("backtests", "optimizations", "bin", "obj", "__pycache__")
+
+
 def project_files(project: Path) -> dict[str, str]:
     """sha256 of the project's source files (what the run was built from)."""
     out = {}
     for p in sorted(project.rglob("*")):
         rel = p.relative_to(project)
-        if p.is_file() and rel.parts[0] not in ("backtests", "bin", "obj", "__pycache__") \
+        if p.is_file() and rel.parts[0] not in OUTPUT_DIRS \
                 and p.suffix in (".py", ".cs", ".csproj", ".txt", ".json"):
             out[rel.as_posix()] = sha256(p)
     return out

@@ -113,7 +113,8 @@ def prepare(ws: Workspace, project: Path, language: str, build_config: str = "Re
     if language == "python":
         env = python_env(ws)
         py = str(venv_python(ws.python_venv))
-        files = [str(p) for p in project.rglob("*.py") if "backtests" not in p.parts]
+        files = [str(p) for p in project.rglob("*.py")
+                 if p.relative_to(project).parts[0] not in results.OUTPUT_DIRS]
         run([py, "-m", "py_compile", *files])
         if (project / "requirements.txt").exists():
             run([py, "-m", "pip", "install", "-q", "-r", str(project / "requirements.txt")])
@@ -136,40 +137,53 @@ def results_folder(project: Path, output: Path | None, name: str) -> Path:
     return project / "backtests" / (f"{stamp}_{safe}" if safe else stamp)
 
 
-def backtest(ws: Workspace, project: Path, parameters: dict[str, str] | None = None, *,
-             extra_config: dict[str, str] | None = None, output: Path | None = None,
-             backtest_name: str = "", build_config: str = "Release") -> dict:
+def check_project(ws: Workspace, project: Path) -> tuple[Path, str]:
     project = project.resolve()
     if not project.is_dir():
         raise KleanError(f"{project} is not a project folder")
     if not (ws.launcher_dir / "QuantConnect.Lean.Launcher.dll").exists():
         raise KleanError(f"no LEAN build in {ws.launcher_dir}: run `klean install-lean`")
-    parameters = parameters or {}
-    language = projects.language_of(project)
-    location, cls, env = prepare(ws, project, language, build_config)
-    results_dir = results_folder(project, output, backtest_name)
+    return project, projects.language_of(project)
+
+
+def run_once(ws: Workspace, project: Path, language: str, location: Path, cls: str, env: dict[str, str],
+             results_dir: Path, parameters: dict[str, str], lean_config: dict[str, str],
+             backtest_name: str = "", build_config: str = "Release", quiet: bool = False) -> dict:
+    """One LEAN run of an already prepared project into ``results_dir`` (with config.json,
+    console.txt and manifest.json). Returns {results, exit_code, ok}."""
     results_dir.mkdir(parents=True, exist_ok=True)
-    lean_config = {**ws.lean_config, **(extra_config or {})}
     config = write_run_config(ws, results_dir, lean_config)
     args = launcher_args(ws, language, location, cls, results_dir, parameters, config, backtest_name)
-    print(f"klean: backtesting {cls} ({language}) -> {results_dir}", flush=True)
+    if not quiet:
+        print(f"klean: backtesting {cls} ({language}) -> {results_dir}", flush=True)
     started = dt.datetime.now(dt.timezone.utc)
     with open(results_dir / "console.txt", "w", encoding="utf-8") as log:
         proc = subprocess.run(args, cwd=ws.launcher_dir, env={**os.environ, **env},
                               stdout=log, stderr=subprocess.STDOUT)
     finished = dt.datetime.now(dt.timezone.utc)
-    summary = results.summary_file(results_dir, required=False)
+    ok = results.summary_file(results_dir, required=False) is not None
     write_manifest(ws, project, results_dir, language=language, algorithm=cls, parameters=parameters,
                    lean_config=lean_config, backtest_name=backtest_name, build_config=build_config,
-                   started=started, finished=finished, exit_code=proc.returncode, ok=summary is not None)
-    if summary is None:
-        tail = (results_dir / "console.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
-        raise KleanError(f"backtest failed (exit {proc.returncode}), no *-summary.json. "
-                         f"Last lines of {results_dir / 'console.txt'}:\n" + "\n".join(tail))
+                   started=started, finished=finished, exit_code=proc.returncode, ok=ok)
     # Python runs can abort at exit after writing results (pythonnet GIL shutdown); the summary is
     # what counts, so a non-zero exit code with a summary is a success.
+    return {"results": str(results_dir), "exit_code": proc.returncode, "ok": ok}
+
+
+def backtest(ws: Workspace, project: Path, parameters: dict[str, str] | None = None, *,
+             extra_config: dict[str, str] | None = None, output: Path | None = None,
+             backtest_name: str = "", build_config: str = "Release") -> dict:
+    project, language = check_project(ws, project)
+    location, cls, env = prepare(ws, project, language, build_config)
+    results_dir = results_folder(project, output, backtest_name)
+    r = run_once(ws, project, language, location, cls, env, results_dir, parameters or {},
+                 {**ws.lean_config, **(extra_config or {})}, backtest_name, build_config)
+    if not r["ok"]:
+        tail = (results_dir / "console.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+        raise KleanError(f"backtest failed (exit {r['exit_code']}), no *-summary.json. "
+                         f"Last lines of {results_dir / 'console.txt'}:\n" + "\n".join(tail))
     stats = results.statistics(results_dir)
-    return {"results": str(results_dir), "exit_code": proc.returncode,
+    return {"results": str(results_dir), "exit_code": r["exit_code"],
             "statistics": {k: stats[k] for k in SUMMARY_KEYS if k in stats}}
 
 

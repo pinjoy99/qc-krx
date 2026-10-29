@@ -15,7 +15,7 @@ class KrxTopMarketCapAlgorithm(QCAlgorithm):
     trading day's market cap; market orders at the next daily bar; no slippage model.
     """
 
-    HOLDINGS = 20
+    HOLDINGS = 20   # default; parameter "holdings" overrides it (klean backtest/optimize --parameter holdings N)
 
     def initialize(self):
         self.set_time_zone("Asia/Seoul")
@@ -24,6 +24,7 @@ class KrxTopMarketCapAlgorithm(QCAlgorithm):
         self.set_end_date(2026, 9, 30)
         self.set_cash(1_000_000_000)
 
+        self.holdings = int(self.get_parameter("holdings", str(self.HOLDINGS)))
         self.boards = KrxBoards.load()
         self.log(f"Loaded {len(self.boards)} code->market entries")
         self.self_check()
@@ -45,7 +46,7 @@ class KrxTopMarketCapAlgorithm(QCAlgorithm):
         rows = [d for d in data
                 if d["board"] == KOSPI and d.symbol.value.endswith("0") and d["market_cap"] > 0]
         rows.sort(key=lambda d: d["market_cap"], reverse=True)
-        self.targets = [d.symbol for d in rows[:self.HOLDINGS]]
+        self.targets = [d.symbol for d in rows[:self.holdings]]
         self.rebalance = True
         return self.targets
 

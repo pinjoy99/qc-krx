@@ -20,13 +20,14 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | `lean project-create` | `klean project-create` | project with `main.py` / `Main.cs` and the KRX models next to it; `--template buy-hold / top-market-cap / empty` |
 | `lean project-delete` | `klean project-delete` | delete a project and its backtests (asks for the name) |
 | `lean backtest` | `klean backtest` | build/check, run LEAN, results in `<project>/backtests/<timestamp>/` with a `manifest.json`, print statistics |
+| `lean optimize` | `klean optimize` | grid search over parameters: one backtest per combination, several at a time, ranked by a target statistic with constraints |
 | `lean logs` | `klean logs` | a run's algorithm log, or LEAN's console output |
 | — | `klean compare` | runs side by side: statistics and equity curves, says IDENTICAL / DIFFERENT |
 | (`lean build`) | `klean lean status` / `klean lean update` | the LEAN commit in use; check out another one and rebuild |
 | — | `klean doctor` | check dotnet, the LEAN build, the data and the Python environment |
 | `lean gui` (paid) | `klean gui` | local web page: projects, runs, results charts, comparisons, start backtests |
 
-Not covered yet: research notebooks, optimization, reports, live trading (roadmap P2–P4). Cloud features are out
+Not covered yet: research notebooks, reports, live trading (roadmap P2–P4). Cloud features are out
 of scope. The plan, command by command against the LEAN CLI: [KLEAN-ROADMAP.md](KLEAN-ROADMAP.md).
 
 ## Install
@@ -80,6 +81,7 @@ krx-workspace/
     krx_models.py
     requirements.txt         optional: extra packages, installed before each backtest
     backtests/2026-10-20_20-17-44/   one folder per run
+    optimizations/2026-10-29_10-02-11_holdings/   one folder per optimization, a run folder per combination
   My First CS/               a C# project
     Main.cs  KrxModels.cs  MyFirstCS.csproj
 ```
@@ -150,6 +152,44 @@ unique prefix), or a results folder path. `compare` prints the statistics side b
 differences with `≠`, compares the equity curves point by point, and ends with `IDENTICAL` or
 `DIFFERENT: …`.
 
+## Optimization
+
+```bash
+klean optimize "My CS" --parameter holdings 5 30 5 --constraint "Drawdown < 35"
+klean optimize "My CS" --parameter holdings 10 30 10 --parameter lookback 20 60 20 \
+    --target "Compounding Annual Return" --max-concurrent-backtests 4 --name grid-1   # 3 × 3 runs
+klean optimize "My CS" --parameter holdings 5 30 5 --estimate      # just count the backtests
+```
+
+- `--parameter NAME MIN MAX STEP` (repeatable): every value from MIN to MAX inclusive in steps of
+  STEP (decimal steps are exact: `0.1 0.3 0.1` gives 0.1, 0.2, 0.3). With several parameters every
+  combination is run (grid search).
+- `--target` (default `Sharpe Ratio`) is any statistic name from the summary, `--target-direction
+  max|min` (default max).
+- `--constraint "STATISTIC OP VALUE"` (repeatable; `<`, `<=`, `>`, `>=`, `==`, `!=`). Values are in
+  the units the statistics show: `Drawdown < 25` means 25 %. Runs that fail a constraint are
+  listed but can't be the best.
+- `--max-concurrent-backtests N` (default: half the CPU cores); `--max-backtests` (default 500)
+  guards against a grid that's larger than meant. `--extra-config`, `--build-config` as for
+  `backtest`.
+
+The project is compiled once; each combination is then an ordinary klean run (its own
+`config.json`, `console.txt`, `manifest.json`, statistics) under
+`<project>/optimizations/<timestamp>[_<name>]/<NNN>_<name>=<value>…/`. `optimization.json` in
+that folder records the grid, target, constraints, every run's parameters, target value and
+constraint result, and the best run. The ranked table is printed at the end (★ = best); runs can
+be opened with `klean compare` / `klean logs` like any other (`"My CS/optimizations/<opt>/<run>"`
+or the folder path).
+
+Only grid search is implemented. LEAN's `Optimizer.Launcher` (which the LEAN CLI uses, and which
+adds an "Euler" search) starts its backtests without a data folder or config file of its own, so
+they would read LEAN's `Data/` instead of the workspace's; klean therefore runs the grid itself.
+Python backtests are several times slower than C# (see *Verified*), so prefer C# for large grids
+and keep concurrency within the machine's memory.
+
+The `examples/` top-market-cap strategy and its template read a `holdings` parameter (default 20,
+which gives the same results as before the parameter existed).
+
 ## Workspace settings
 
 ```bash
@@ -180,6 +220,9 @@ on `Lean/Data` directly).
 | P1: `--extra-config algorithm-id MyRun` | result files renamed `MyRun-*`, so the per-run config reaches LEAN |
 | P1: `project-delete` | asks for the name; refuses `data/` and folders outside the workspace |
 | P1: `lean update` (tested commit) | rebuilt in 94 s, 0 errors |
+| P2: `optimize` C# top-market-cap, `holdings 5 30 5`, `Drawdown < 35`, 3 at a time | 6 backtests in 45 s; best holdings=25 (Sharpe 0.201, CAGR 5.969 %, drawdown 30.4 %, ₩2,493,499,009.30); 5 and 10 fail the constraint |
+| P2: `backtest --parameter holdings 25` vs the optimizer's run 25 | `klean compare`: IDENTICAL |
+| P2: `optimize` Python, holdings 20 and 25, 2 at a time | 135 s; same figures as C#; holdings=20 IDENTICAL to the run without the parameter |
 | GUI (Chromium, light/dark, desktop and 420 px wide) | all pages render with no browser errors; hover values; a backtest started from the page runs, the runs list refreshes, results open; compare of C# vs Python top-market-cap: IDENTICAL; requests without the token: 403; runs outside the workspace refused |
 
 ## GUI
@@ -197,6 +240,7 @@ A local web page for the workspace (stop it with Ctrl+C):
 | Workspace | projects with their last run (CAGR, drawdown, Sharpe, end equity), KRX data status, setup check, settings |
 | Project | its runs (tick two or more → Compare), and a form to start a backtest with a name, parameters and extra LEAN config, with LEAN's output live |
 | Run | main figures, equity vs KOSPI 200 (scaled to the starting equity) with hover values, drawdown, all statistics, orders, the algorithm log or LEAN's console output, the run record (`manifest.json`) |
+| Optimization | target by parameter value (one-parameter grids; hollow dots = fails a constraint), the ranked runs (tick two or more → Compare), links to each run |
 | Compare | equity curves overlaid and statistics side by side, differences highlighted, IDENTICAL / DIFFERENT |
 
 - It uses only Python's standard library, and the page draws its own charts, so it works offline

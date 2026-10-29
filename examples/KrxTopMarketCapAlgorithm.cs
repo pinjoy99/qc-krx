@@ -19,7 +19,7 @@ namespace QuantConnect.Algorithm.CSharp
     /// </summary>
     public class KrxTopMarketCapAlgorithm : QCAlgorithm
     {
-        private const int Holdings = 20;
+        private int _holdings = 20;   // parameter "holdings" (klean backtest/optimize --parameter holdings N)
         private Dictionary<string, string> _boards;
         private int _lastSelectionMonth = -1;
         private List<Symbol> _targets = new List<Symbol>();
@@ -33,6 +33,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetEndDate(2026, 9, 30);
             SetCash(1_000_000_000);
 
+            _holdings = GetParameter("holdings", 20);
             _boards = KrxBoards.Load();
             Log($"Loaded {_boards.Count} code->market entries");
             SelfCheck();
@@ -54,7 +55,7 @@ namespace QuantConnect.Algorithm.CSharp
                 _targets = data.OfType<KrxUniverseData>()
                     .Where(d => d.Board == KrxBoards.Kospi && d.Symbol.Value.EndsWith("0") && d.MarketCap > 0)
                     .OrderByDescending(d => d.MarketCap)
-                    .Take(Holdings)
+                    .Take(_holdings)
                     .Select(d => d.Symbol)
                     .ToList();
                 _rebalance = true;

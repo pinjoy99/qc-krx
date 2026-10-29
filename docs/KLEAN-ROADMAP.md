@@ -38,7 +38,7 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 | `  --detach` | run in the background | 🔜 P2 | Background process + `klean logs` to follow it |
 | `  --download-data`, `--data-provider-historical`, `--data-purchase-limit` | QuantConnect / vendor data | ➖ | Data comes from the qc-krx pipeline (`klean data install`) |
 | `  --image`, `--update`, `--no-update`, `--extra-docker-config`, `--addon-module` | Docker image / modules | ➖ | No Docker. Engine updates: P1 `klean lean update` |
-| `lean optimize` | parameter search via Optimizer.Launcher | 🔜 P2 `klean optimize` | Grid / Euler strategies, `--parameter NAME MIN MAX STEP`, `--target`, `--target-direction`, `--constraint`, `--max-concurrent-backtests`, `--estimate` |
+| `lean optimize` | parameter search via Optimizer.Launcher | ✅ `klean optimize` (P2, 2026-10-29) | Grid search; `--parameter NAME MIN MAX STEP`, `--target`, `--target-direction`, `--constraint`, `--max-concurrent-backtests`, `--estimate`. klean runs the grid itself (see P2); no Euler strategy |
 | `lean report` | HTML/PDF report from backtest results | 🔜 P2 `klean report` | Build LEAN's `Report` project once; run it on a results folder; check that won (KRW) amounts and the KOSPI 200 benchmark show correctly |
 | `lean research` | Jupyter with QuantBook (Docker research image) | 🔜 P3 `klean research` | Jupyter in the Python 3.11 env with LEAN's `Research/` (QuantBook) on the source build; needs investigation (kernel start-up, pythonnet) |
 | `lean logs` | show a run's log | ✅ `klean logs` (P1) | Latest (or `--backtest NAME`) `-log.txt` / `console.txt` of a project |
@@ -76,8 +76,11 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
   (`klean compare`: IDENTICAL incl. equity curves); 14 klean unit tests. See KLEAN.md.
 
 ### P2 — research workflow
-- `optimize` on `Optimizer.Launcher` (already part of the LEAN build): config generation, results
-  table; test with a 2-parameter grid on the top-20 strategy (holdings count × rebalance month).
+- ✅ `optimize` (2026-10-29). Deviation from the plan: not on `Optimizer.Launcher`, whose child
+  backtests get no `--data-folder` / `--config` (they would read LEAN's `Data/`); klean compiles
+  once and runs the grid as ordinary klean runs in parallel, so only grid search (no Euler).
+  Tested with a 1-parameter grid (`holdings` 5–30, 6 runs) in C# and a 2-run Python grid; the
+  rebalance-month parameter wasn't added. GUI: optimization page (ranked runs, target chart).
 - `report` on LEAN's `Report` project; HTML first, PDF if the tooling is available.
 - `library add/remove`; switch templates to a shared KRX-models library (optional per project).
 - `backtest --detach`; `check-models`.
@@ -112,6 +115,6 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 
 ## Suggested order
 
-P1 is done; next `optimize` and `report` from P2, because parameter
+P1 is done, and `optimize` from P2; next `report`, because parameter
 searches and reports are the most common next needs after single backtests. P3 on demand. P4 only
 after the broker plugin exists.

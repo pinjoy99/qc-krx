@@ -67,7 +67,7 @@ class GuiTest(unittest.TestCase):
         p = json.loads(self.get("/api/project?name=A")[1])
         self.assertEqual([r["name"] for r in p["runs"]], ["2026-10-28_11-00-00", "2026-10-28_10-00-00"])
         r = json.loads(self.get("/api/run?ref=A")[1])
-        self.assertEqual(r["ref"], "A/2026-10-28_11-00-00")
+        self.assertEqual(r["ref"], "A/backtests/2026-10-28_11-00-00")
         self.assertEqual(r["equity"][-1], [1700086400, 110.0])
         c = json.loads(self.get("/api/compare?ref=A/2026-10-28_10&ref=A/2026-10-28_11")[1])
         self.assertTrue(c["verdict"]["identical"])
@@ -79,6 +79,30 @@ class GuiTest(unittest.TestCase):
         self.assertIn(b"outside the workspace", body)
         status, _ = self.get("/api/backtest", data=json.dumps({"project": "../other"}).encode())
         self.assertEqual(status, 400)
+
+    def test_optimization_api(self):
+        opt = self.root / "A" / "optimizations" / "o1"
+        stats = {"Sharpe Ratio": "0.2", "End Equity": "110", "Drawdown": "10%"}
+        opt.mkdir(parents=True)
+        for i, (h, sh) in enumerate([("5", "0.1"), ("10", "0.3")], 1):
+            run = opt / f"{i:03d}_h={h}"
+            run.mkdir()
+            (run / "Algo-summary.json").write_text(json.dumps({"statistics": {**stats, "Sharpe Ratio": sh}}))
+        runs = [{"index": i, "folder": f"{i:03d}_h={h}", "parameters": {"h": h}, "ok": True, "passes": True,
+                 "target_value": float(sh), "failed_constraints": [], "stats": {"Sharpe Ratio": sh}}
+                for i, (h, sh) in enumerate([("5", "0.1"), ("10", "0.3")], 1)]
+        (opt / "optimization.json").write_text(json.dumps({
+            "project": "A", "algorithm": "A", "language": "python", "strategy": "grid", "target": "Sharpe Ratio",
+            "direction": "max", "constraints": [], "parameters": [{"name": "h", "min": "5", "max": "10", "step": "5"}],
+            "lean_config": {}, "started_utc": "", "seconds": 1, "concurrent": 2, "runs": runs, "best": "002_h=10"}))
+        p = json.loads(self.get("/api/project?name=A")[1])
+        self.assertEqual(p["optimizations"][0]["best"]["parameters"], {"h": "10"})
+        self.assertNotIn("optimizations/o1/optimization.json", p["files"])
+        o = json.loads(self.get("/api/optimization?project=A&name=o1")[1])
+        self.assertEqual(o["row_refs"], ["A/optimizations/o1/002_h=10", "A/optimizations/o1/001_h=5"])
+        r = json.loads(self.get("/api/run?ref=" + urllib.request.quote("A/optimizations/o1/002_h=10"))[1])
+        self.assertEqual(r["statistics"]["Sharpe Ratio"], "0.3")
+        self.assertEqual(self.get("/api/optimization?project=A&name=..")[0], 400)
 
     def test_downsample(self):
         pts = [[i, i] for i in range(10000)]

@@ -139,7 +139,7 @@ CSPROJ_TEMPLATE = '''<Project Sdk="Microsoft.NET.Sdk">
     <LeanBin Condition="'$(LeanBin)' == ''">{lean_bin}</LeanBin>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="backtests/**" />
+    <Compile Remove="backtests/**;optimizations/**" />
     <!-- LEAN's own example algorithms are not a dependency of a user project -->
     <Reference Include="$(LeanBin)/QuantConnect.*.dll" Exclude="$(LeanBin)/QuantConnect.Algorithm.CSharp.dll" Private="false" />
     <Reference Include="$(LeanBin)/NodaTime.dll" Private="false" />
@@ -218,7 +218,7 @@ def csharp_algorithm_class(project: Path) -> str:
     pattern = re.compile(r"class\s+(\w+)\s*:\s*QCAlgorithm\b")
     found = []
     for path in sorted(project.rglob("*.cs")):
-        if "backtests" in path.parts or "obj" in path.parts or "bin" in path.parts:
+        if path.relative_to(project).parts[0] in ("backtests", "optimizations", "obj", "bin"):
             continue
         found += pattern.findall(path.read_text(encoding="utf-8"))
     if len(found) != 1:
