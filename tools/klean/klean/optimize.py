@@ -123,6 +123,7 @@ def optimize(ws: Workspace, project: Path, specs: list[tuple[str, str, str, str]
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") if name else ""
     out = project / "optimizations" / (f"{stamp}_{safe}" if safe else stamp)
     out.mkdir(parents=True)
+    skipped = results.snapshot_code(project, out / "code")    # one code snapshot for every run
     lean_config = {**ws.lean_config, **(extra_config or {})}
     log(f"klean: optimizing {cls} ({language}): {len(combos)} backtests, {workers} at a time -> {out}")
     started = time.time()
@@ -131,7 +132,8 @@ def optimize(ws: Workspace, project: Path, specs: list[tuple[str, str, str, str]
     def one(i: int, params: dict[str, str]) -> dict:
         run_dir = out / run_folder_name(i, params)
         r = run_once(ws, project, language, location, cls, env, run_dir, params, lean_config,
-                     backtest_name=f"{safe or 'opt'}-{i:03d}", build_config=build_config, quiet=True)
+                     backtest_name=f"{safe or 'opt'}-{i:03d}", build_config=build_config, quiet=True,
+                     code="../code/")
         return {"index": i, "folder": run_dir.name, "parameters": params, "exit_code": r["exit_code"],
                 **evaluate(run_dir, target, parsed)}
 
@@ -150,7 +152,8 @@ def optimize(ws: Workspace, project: Path, specs: list[tuple[str, str, str, str]
                "parameters": [{"name": n, "min": lo, "max": hi, "step": st} for n, lo, hi, st in specs],
                "lean_config": lean_config, "started_utc": dt.datetime.fromtimestamp(started, dt.timezone.utc)
                .strftime("%Y-%m-%dT%H:%M:%SZ"), "seconds": round(time.time() - started, 1),
-               "concurrent": workers, "runs": runs, "best": best["folder"] if best else None}
+               "concurrent": workers, "code": "code/", **({"code_skipped_large_files": skipped} if skipped else {}),
+               "runs": runs, "best": best["folder"] if best else None}
     (out / "optimization.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     summary["folder"] = str(out)
     return summary

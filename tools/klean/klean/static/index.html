@@ -294,10 +294,13 @@ async function pageRun(ref) {
     <div class="tiles">${tiles}</div>
     <div class="panel"><h2>Equity</h2>${legend([{label: "Strategy"}, {label: "KOSPI 200 (scaled to start equity)", color: COLORS[1]}])}<div class="chart" id="eq"></div></div>
     <div class="panel"><h2>Drawdown</h2><div class="chart" id="dd"></div></div>
-    <div class="panel"><div class="tabs"><a data-t="stats" class="on">Statistics</a><a data-t="orders">Orders (${r.orders.length})</a><a data-t="log">Log</a><a data-t="manifest">Run record</a></div>
+    <div class="panel"><div class="tabs"><a data-t="stats" class="on">Statistics</a><a data-t="orders">Orders (${r.orders.length})</a><a data-t="log">Log</a><a data-t="code">Code (${r.code.length})</a><a data-t="manifest">Run record</a></div>
       <div data-p="stats" class="grid"><table>${sr.slice(0, half).join("")}</table><table>${sr.slice(half).join("")}</table></div>
       <div data-p="orders" style="display:none" class="scroll"><table><tr><th class="num">#</th><th>Time (UTC)</th><th>Symbol</th><th>Type</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Value</th><th>Status</th><th>Tag</th></tr>${orders}</table></div>
       <div data-p="log" style="display:none"><pre>${esc(r.log.join("\n"))}</pre><div class="row" style="margin-top:8px"><a id="console">Show LEAN console output</a></div></div>
+      <div data-p="code" style="display:none">${r.code.length ? `<p class="muted">The project's files as they were when this run started.</p>
+        <div class="row" id="codefiles" style="flex-wrap:wrap;gap:6px 14px;margin-bottom:8px">${r.code.map(f => `<a data-f="${esc(f)}">${esc(f)}</a>`).join("")}</div><pre id="codetext"></pre>`
+        : '<p class="muted">No code snapshot (run made before klean 0.5).</p>'}</div>
       <div data-p="manifest" style="display:none">${Object.keys(m).length ? `<table>${Object.entries(m).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${typeof v === "object" ? `<pre>${esc(JSON.stringify(v, null, 2))}</pre>` : esc(v)}</td></tr>`).join("")}</table>` : '<p class="muted">No manifest (run made before klean 0.2).</p>'}
         <p class="muted">Folder: ${esc(r.folder)}</p></div>
     </div>`;
@@ -309,6 +312,13 @@ async function pageRun(ref) {
   });
   document.getElementById("console").onclick = async () => {
     const c = await api("/api/log", {ref, console: 1, tail: 400}); app.querySelector('[data-p="log"] pre').textContent = c.lines.join("\n"); };
+  const showCode = async f => {
+    const c = await api("/api/code-file", {ref: r.ref, path: f});
+    app.querySelectorAll("#codefiles a").forEach(a => a.style.fontWeight = a.dataset.f === f ? "600" : "");
+    document.getElementById("codetext").textContent = c.text ?? `(binary or large file, ${c.bytes} bytes)`;
+  };
+  app.querySelectorAll("#codefiles a").forEach(a => a.onclick = () => showCode(a.dataset.f));
+  if (r.code.length) showCode(r.code.find(f => /^(main\.py|Main\.cs)$/.test(f)) || r.code[0]);
   document.getElementById("mkreport").onclick = async () => {
     const btn = document.getElementById("mkreport"), state = document.getElementById("repstate");
     btn.disabled = true; state.innerHTML = '<span class="badge run">making report</span> (about 40 s; LEAN replays the orders)';

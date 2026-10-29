@@ -75,6 +75,11 @@ def manifest(run: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
+def code_dir(run: Path) -> Path:
+    """The run's code snapshot: <run>/code, or the optimization's shared one (../code)."""
+    return (run / manifest(run).get("code", "code/")).resolve()
+
+
 def project_list(ws: Workspace) -> list[Path]:
     out = []
     for p in sorted(ws.root.iterdir()):
@@ -181,7 +186,20 @@ def api_run(ws: Workspace, q: dict) -> dict:
     return {"ref": run.relative_to(ws.root).as_posix(), "folder": str(run),
             "statistics": results.statistics(run), "runtime": full.get("runtimeStatistics", {}),
             "equity": downsample(equity), "benchmark": downsample(bench), "drawdown": downsample(drawdown),
-            "orders": orders, "manifest": manifest(run), "log": log, "report": (run / "report.html").exists()}
+            "orders": orders, "manifest": manifest(run), "log": log, "report": (run / "report.html").exists(),
+            "code": [p.relative_to(code_dir(run)).as_posix() for p in sorted(code_dir(run).rglob("*")) if p.is_file()]
+            if code_dir(run).is_dir() else []}
+
+
+def api_code_file(ws: Workspace, q: dict) -> dict:
+    root = code_dir(run_ref(ws, q["ref"][0]))
+    path = inside(ws, root / q["path"][0])
+    if root not in path.parents or not path.is_file():
+        raise KleanError("no such file in the code snapshot")
+    data = path.read_bytes()
+    if len(data) > 2_000_000 or b"\0" in data[:8000]:
+        return {"path": q["path"][0], "text": None, "bytes": len(data)}
+    return {"path": q["path"][0], "text": data.decode("utf-8", errors="replace"), "bytes": len(data)}
 
 
 def api_compare(ws: Workspace, q: dict) -> dict:
@@ -269,7 +287,8 @@ class Jobs:
 
 def make_handler(ws: Workspace, token: str, jobs: Jobs):
     gets = {"/api/workspace": api_workspace, "/api/project": api_project, "/api/run": api_run,
-            "/api/compare": api_compare, "/api/log": api_log, "/api/optimization": api_optimization}
+            "/api/compare": api_compare, "/api/log": api_log, "/api/optimization": api_optimization,
+            "/api/code-file": api_code_file}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = f"klean-gui/{__version__}"

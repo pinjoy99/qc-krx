@@ -5,7 +5,8 @@
 2. Write the run's LEAN config (LEAN's Launcher/config.json + the workspace's and the run's extra
    keys) into the results folder, and run LEAN's launcher with it, the workspace's data folder and
    the results folder (default ``<project>/backtests/<yyyy-MM-dd_HH-mm-ss>[_<name>]/``).
-3. Write ``manifest.json`` (what was run, with which code, engine and data) and print the main
+3. Copy the project's source files into ``<results>/code/`` (like the LEAN CLI), write
+   ``manifest.json`` (what was run, with which code, engine and data) and print the main
    statistics from ``<Algorithm>-summary.json``.
 """
 
@@ -149,10 +150,13 @@ def check_project(ws: Workspace, project: Path) -> tuple[Path, str]:
 
 def run_once(ws: Workspace, project: Path, language: str, location: Path, cls: str, env: dict[str, str],
              results_dir: Path, parameters: dict[str, str], lean_config: dict[str, str],
-             backtest_name: str = "", build_config: str = "Release", quiet: bool = False) -> dict:
-    """One LEAN run of an already prepared project into ``results_dir`` (with config.json,
-    console.txt and manifest.json). Returns {results, exit_code, ok}."""
+             backtest_name: str = "", build_config: str = "Release", quiet: bool = False,
+             code: str = "code/") -> dict:
+    """One LEAN run of an already prepared project into ``results_dir`` (with code/, config.json,
+    console.txt and manifest.json). ``code`` is where the code snapshot is, relative to the run;
+    the default "code/" makes one in the run folder (optimizations share one). Returns {results, exit_code, ok}."""
     results_dir.mkdir(parents=True, exist_ok=True)
+    skipped = results.snapshot_code(project, results_dir / "code") if code == "code/" else []
     config = write_run_config(ws, results_dir, lean_config)
     args = launcher_args(ws, language, location, cls, results_dir, parameters, config, backtest_name)
     if not quiet:
@@ -165,7 +169,8 @@ def run_once(ws: Workspace, project: Path, language: str, location: Path, cls: s
     ok = results.summary_file(results_dir, required=False) is not None
     write_manifest(ws, project, results_dir, language=language, algorithm=cls, parameters=parameters,
                    lean_config=lean_config, backtest_name=backtest_name, build_config=build_config,
-                   started=started, finished=finished, exit_code=proc.returncode, ok=ok)
+                   started=started, finished=finished, exit_code=proc.returncode, ok=ok, code=code,
+                   **({"code_skipped_large_files": skipped} if skipped else {}))
     # Python runs can abort at exit after writing results (pythonnet GIL shutdown); the summary is
     # what counts, so a non-zero exit code with a summary is a success.
     return {"results": str(results_dir), "exit_code": proc.returncode, "ok": ok}

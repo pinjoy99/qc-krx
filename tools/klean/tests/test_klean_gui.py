@@ -104,6 +104,18 @@ class GuiTest(unittest.TestCase):
         self.assertEqual(r["statistics"]["Sharpe Ratio"], "0.3")
         self.assertEqual(self.get("/api/optimization?project=A&name=..")[0], 400)
 
+    def test_code_snapshot(self):
+        run = self.root / "A" / "backtests" / "2026-10-28_11-00-00"
+        ref = urllib.request.quote("A/backtests/2026-10-28_11-00-00")
+        (run / "code" / "lib").mkdir(parents=True)
+        (run / "code" / "main.py").write_text("print(1)")
+        (run / "code" / "lib" / "u.py").write_text("u")
+        self.assertEqual(json.loads(self.get("/api/run?ref=" + ref)[1])["code"], ["lib/u.py", "main.py"])
+        f = json.loads(self.get(f"/api/code-file?ref={ref}&path=main.py")[1])
+        self.assertEqual(f["text"], "print(1)")
+        self.assertEqual(self.get(f"/api/code-file?ref={ref}&path=..%2Fconsole.txt")[0], 400)
+        self.assertEqual(self.get(f"/api/code-file?ref={ref}&path=%2Fetc%2Fpasswd")[0], 400)
+
     def test_report_page(self):
         run = self.root / "A" / "backtests" / "2026-10-28_11-00-00"
         ref = urllib.request.quote("A/backtests/2026-10-28_11-00-00")

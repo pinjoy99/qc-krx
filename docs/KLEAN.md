@@ -113,7 +113,8 @@ What happens:
    (`<project>/backtests/<yyyy-MM-dd_HH-mm-ss>[_<backtest-name>]/`, or `--output`). The
    algorithm class is found automatically (the class deriving from `QCAlgorithm`; exactly one per
    project).
-4. `manifest.json` is written and the main statistics are printed.
+4. The project's files are copied into `<results>/code/` (like the LEAN CLI), `manifest.json` is
+   written and the main statistics are printed.
 
 Results folder:
 
@@ -124,8 +125,9 @@ Results folder:
 | `<Algorithm>-order-events.json` | orders and fills |
 | `<Algorithm>-log.txt` | your `log()` / `Log()` lines |
 | `console.txt` | LEAN's full console output — look here when something fails |
+| `code/` | a copy of the project's files when the run started (`main.py`, `research.ipynb`, the KRX models, …). Left out: `backtests/`, `optimizations/`, `bin/`, `obj/`, `__pycache__/`, hidden folders (`.git`, `.vscode`, …), `.ipynb_checkpoints/`, and files over 10 MB (listed in the manifest under `code_skipped_large_files`) |
 | `config.json` | the LEAN config the run used |
-| `manifest.json` | what produced the results: project, language, algorithm class, parameters, LEAN config keys, build config, start time and duration, exit code, **qc-krx and LEAN commits** (`-dirty` = uncommitted changes), **last date of the KRX data**, host, and the sha256 of every project file |
+| `manifest.json` | what produced the results: project, language, algorithm class, parameters, LEAN config keys, build config, start time and duration, exit code, **qc-krx and LEAN commits** (`-dirty` = uncommitted changes), **last date of the KRX data**, host, and the sha256 of every project file (the same files as `code/`) |
 | `failed-data-requests-*.txt` | files LEAN didn't find (universe files for weekends/holidays are expected) |
 
 Parameters reach the algorithm through `self.get_parameter("weight", "0.9")` /
@@ -179,7 +181,8 @@ klean optimize "My CS" --parameter holdings 5 30 5 --estimate      # just count 
 
 The project is compiled once; each combination is then an ordinary klean run (its own
 `config.json`, `console.txt`, `manifest.json`, statistics) under
-`<project>/optimizations/<timestamp>[_<name>]/<NNN>_<name>=<value>…/`. `optimization.json` in
+`<project>/optimizations/<timestamp>[_<name>]/<NNN>_<name>=<value>…/`, with one shared code
+snapshot in `optimizations/<timestamp>[_<name>]/code/`. `optimization.json` in
 that folder records the grid, target, constraints, every run's parameters, target value and
 constraint result, and the best run. The ranked table is printed at the end (★ = best); runs can
 be opened with `klean compare` / `klean logs` like any other (`"My CS/optimizations/<opt>/<run>"`
@@ -269,6 +272,7 @@ on `Lean/Data` directly).
 | P2: `report --pdf` (headless Chromium) | 4 pages, one per report page; `--strategy-version`, description and parameters shown |
 | P2: `report` on an optimization run, and from the GUI's run page | report written; the GUI page opens it (403 without the token) |
 | P2: run config without LEAN's sample parameters | top-market-cap with `holdings 25`: same end equity as before (₩2,493,499,009.30) |
+| Code snapshot: Python (with a `research.ipynb`), C#, and an optimization | `code/` holds `main.py`, `krx_models.py`, `research.ipynb` / `Main.cs`, `KrxModels.cs`, the `.csproj`; no `__pycache__`, `bin`, `obj`; one shared `code/` per optimization; results unchanged; GUI Code tab shows the files |
 | GUI (Chromium, light/dark, desktop and 420 px wide) | all pages render with no browser errors; hover values; a backtest started from the page runs, the runs list refreshes, results open; compare of C# vs Python top-market-cap: IDENTICAL; requests without the token: 403; runs outside the workspace refused |
 
 ## GUI
@@ -285,7 +289,7 @@ A local web page for the workspace (stop it with Ctrl+C):
 |---|---|
 | Workspace | projects with their last run (CAGR, drawdown, Sharpe, end equity), KRX data status, setup check, settings |
 | Project | its runs (tick two or more → Compare), and a form to start a backtest with a name, parameters and extra LEAN config, with LEAN's output live |
-| Run | main figures, equity vs KOSPI 200 (scaled to the starting equity) with hover values, drawdown, all statistics, orders, the algorithm log or LEAN's console output, the run record (`manifest.json`) |
+| Run | main figures, equity vs KOSPI 200 (scaled to the starting equity) with hover values, drawdown, all statistics, orders, the algorithm log or LEAN's console output, the code snapshot (`code/`), the run record (`manifest.json`) |
 | Optimization | target by parameter value (one-parameter grids; hollow dots = fails a constraint), the ranked runs (tick two or more → Compare), links to each run |
 | Report | the run page's *Make LEAN report* button runs `klean report` for that run; *Open report* shows it in a new tab |
 | Compare | equity curves overlaid and statistics side by side, differences highlighted, IDENTICAL / DIFFERENT |

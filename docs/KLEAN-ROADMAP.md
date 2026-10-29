@@ -31,6 +31,7 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 | `lean delete-project` | delete a project | ✅ `klean project-delete` (P1) | Asks for confirmation; refuses outside the workspace |
 | `lean backtest` | compile + run in Docker | ✅ `klean backtest` | P1 options below |
 | `  --output` | results folder | ✅ (P1) | Default stays `<project>/backtests/<timestamp>/` |
+| `  ` (code snapshot) | copies the project's files into `<run>/code/` | ✅ (2026-10-29) | Same exclusions idea (outputs, build folders, checkpoints); one shared snapshot per optimization |
 | `  --backtest-name` | name the run | ✅ (P1) | Folder suffix + `backtest-name` in LEAN |
 | `  --extra-config` | extra LEAN config keys | ✅ (P1) | `--extra-config KEY VALUE`, written to a per-run config file |
 | `  --release` / `--debug` | C# build config / attach a debugger | ✅ P1 `--build-config`, 🔜 P3 `--debug` | P3: VS Code / Rider attach for C#, `debugpy` for Python |

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -113,15 +114,39 @@ def sha256(path: Path) -> str:
 OUTPUT_DIRS = ("backtests", "optimizations", "bin", "obj", "__pycache__")
 
 
-def project_files(project: Path) -> dict[str, str]:
-    """sha256 of the project's source files (what the run was built from)."""
-    out = {}
+# Files bigger than this are listed in the manifest but not copied into the code snapshot.
+MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
+
+
+def source_files(project: Path) -> list[Path]:
+    """The project's own files: everything except outputs (backtests/, bin/, …), hidden folders
+    (.git, .vscode, …) and .ipynb_checkpoints — what `lean backtest` copies into <run>/code."""
+    out = []
     for p in sorted(project.rglob("*")):
         rel = p.relative_to(project)
-        if p.is_file() and rel.parts[0] not in OUTPUT_DIRS \
-                and p.suffix in (".py", ".cs", ".csproj", ".txt", ".json"):
-            out[rel.as_posix()] = sha256(p)
+        if p.is_file() and rel.parts[0] not in OUTPUT_DIRS and not any(
+                part.startswith(".") or part in ("__pycache__", ".ipynb_checkpoints") for part in rel.parts[:-1]):
+            out.append(p)
     return out
+
+
+def project_files(project: Path) -> dict[str, str]:
+    """sha256 of the project's source files (what the run was built from)."""
+    return {p.relative_to(project).as_posix(): sha256(p) for p in source_files(project)}
+
+
+def snapshot_code(project: Path, dest: Path) -> list[str]:
+    """Copy the project's source files into ``dest`` (like the LEAN CLI's <run>/code/).
+    Returns the files left out for being larger than MAX_SNAPSHOT_BYTES."""
+    skipped = []
+    for p in source_files(project):
+        rel = p.relative_to(project)
+        if p.stat().st_size > MAX_SNAPSHOT_BYTES:
+            skipped.append(rel.as_posix())
+            continue
+        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, dest / rel)
+    return skipped
 
 
 # ---------------------------------------------------------------- logs
