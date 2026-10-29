@@ -12,7 +12,7 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | LEAN CLI | klean | What it does |
 |---|---|---|
 | (Docker image) | `klean install-lean` | clone LEAN at the tested commit and build it (.NET 10) |
-| (Docker image) | `klean install-python` | Python 3.11 environment with pandas/numpy, for Python strategies |
+| (Docker image) | `klean install-python` | Python 3.11 environment with pandas/numpy, for Python strategies (and `klean report`) |
 | `lean init` | `klean init` | workspace: `klean.json` + `data/` with LEAN's config files only (no vendor sample data) |
 | — | `klean data install lean.zip` | KRX data into `data/` + the KRX market hours and symbol properties |
 | — | `klean data status` | KRX data range, securities (active / delisted), universe files, indices, market hours |
@@ -21,13 +21,14 @@ It's made for the KRX data of this project and works with Python and C# strategi
 | `lean project-delete` | `klean project-delete` | delete a project and its backtests (asks for the name) |
 | `lean backtest` | `klean backtest` | build/check, run LEAN, results in `<project>/backtests/<timestamp>/` with a `manifest.json`, print statistics |
 | `lean optimize` | `klean optimize` | grid search over parameters: one backtest per combination, several at a time, ranked by a target statistic with constraints |
+| `lean report` | `klean report` | LEAN's HTML strategy report for a run (optionally PDF) |
 | `lean logs` | `klean logs` | a run's algorithm log, or LEAN's console output |
 | — | `klean compare` | runs side by side: statistics and equity curves, says IDENTICAL / DIFFERENT |
 | (`lean build`) | `klean lean status` / `klean lean update` | the LEAN commit in use; check out another one and rebuild |
 | — | `klean doctor` | check dotnet, the LEAN build, the data and the Python environment |
 | `lean gui` (paid) | `klean gui` | local web page: projects, runs, results charts, comparisons, start backtests |
 
-Not covered yet: research notebooks, reports, live trading (roadmap P2–P4). Cloud features are out
+Not covered yet: research notebooks, live trading (roadmap P3–P4). Cloud features are out
 of scope. The plan, command by command against the LEAN CLI: [KLEAN-ROADMAP.md](KLEAN-ROADMAP.md).
 
 ## Install
@@ -54,7 +55,7 @@ Prerequisites: `git`, the **.NET 10 SDK**
 
 ```bash
 klean install-lean --dir ~/Lean                     # once; 1–10 min (76 s here), ~0.9 GB
-klean install-python --dir ~/.klean/py311           # once, only for Python strategies
+klean install-python --dir ~/.klean/py311           # once, for Python strategies and for reports
 klean init ~/krx-workspace --lean ~/Lean --python-venv ~/.klean/py311 --data-zip ~/Downloads/lean.zip
 cd ~/krx-workspace
 klean doctor                                        # every line should say OK
@@ -128,7 +129,10 @@ Results folder:
 | `failed-data-requests-*.txt` | files LEAN didn't find (universe files for weekends/holidays are expected) |
 
 Parameters reach the algorithm through `self.get_parameter("weight", "0.9")` /
-`GetParameter("weight", "0.9")`. Names and values can't contain `,` or `:`.
+`GetParameter("weight", "0.9")`. Names and values can't contain `,` or `:`. Only the
+`--parameter` values reach the algorithm: since klean 0.4 the sample `parameters` in LEAN's own
+`config.json` (`ema-fast`, `intrinio-username`, …) are left out of the run's config (results are
+unchanged; they only showed up in the run record and the report).
 
 Python runs can end with a `GIL must always be released` crash *after* the results are written
 (pythonnet shutdown); klean treats a run with a summary file as successful.
@@ -190,6 +194,44 @@ and keep concurrency within the machine's memory.
 The `examples/` top-market-cap strategy and its template read a `holdings` parameter (default 20,
 which gives the same results as before the parameter existed).
 
+## Reports
+
+```bash
+klean report "My CS"                                  # latest run of the project -> <run>/report.html
+klean report                                          # the workspace's latest run
+klean report "My CS/2026-10-29_00-39-22_rep" --strategy-version v1 --pdf
+klean report "My CS/optimizations/2026-10-29_10-02-11_holdings/005_holdings=25" --report-destination ~/h25.html
+```
+
+This runs LEAN's own report builder (the `Report` project of your LEAN clone) on a results
+folder: key statistics, monthly and annual returns, cumulative returns against the benchmark
+(KOSPI 200 for the examples and templates), drawdown periods, asset allocation, rolling beta and
+Sharpe, leverage, exposure, crisis periods, parameters.
+
+- **First use:** klean builds the `Report` project (about 30 s) and installs `matplotlib==3.8.4`
+  (the version of LEAN's Docker image) into the workspace's Python environment; the report draws
+  its charts with matplotlib, so a Python environment is needed even for C# runs.
+  `klean lean update` rebuilds it along with the engine once it exists.
+- About 35–40 s per report: LEAN replays the run's orders against the workspace's data.
+- Options as in the LEAN CLI: `--report-destination` (default `<run>/report.html`; refuses to
+  replace one without `--overwrite`), `--strategy-name` (default: the project), `--strategy-version`,
+  `--strategy-description` (default: one line from the run record: algorithm, parameters, run,
+  data date, LEAN commit), `--css` (CSS overriding the report's styles), `--html` (your own
+  template in the format of LEAN's `Report/template.html`).
+- `--pdf` also writes `report.pdf`, with `wkhtmltopdf` (what LEAN uses) if it is installed,
+  otherwise with Chromium/Chrome in headless mode (one PDF page per report page). The LEAN CLI
+  doesn't need either because its Docker image has wkhtmltopdf.
+- Next to the report: `report-console.txt` (the Report program's output — look here if it fails)
+  and `report-backtesting-portfolio.json` (the replayed portfolios, written by LEAN).
+- The page loads its fonts, stylesheets and the QuantConnect logo from the internet (as LEAN's
+  template does); offline it still shows every figure, with plainer styling.
+- What the report shows comes from LEAN unchanged. Some labels assume US dollars ("Capacity
+  (USD)" is shown as "-"); amounts in the charts are percentages, so won amounts aren't affected.
+  The crisis charts are US/global events and are empty for periods without data.
+- `report-console.txt` contains one `InteractiveBrokersFeeModel(): unexpected equity Market krx`
+  error from the end of LEAN's replay (its replay uses the default brokerage model, which has no
+  KRX fees). It happens after the portfolios are computed and doesn't change the report.
+
 ## Workspace settings
 
 ```bash
@@ -223,6 +265,10 @@ on `Lean/Data` directly).
 | P2: `optimize` C# top-market-cap, `holdings 5 30 5`, `Drawdown < 35`, 3 at a time | 6 backtests in 45 s; best holdings=25 (Sharpe 0.201, CAGR 5.969 %, drawdown 30.4 %, ₩2,493,499,009.30); 5 and 10 fail the constraint |
 | P2: `backtest --parameter holdings 25` vs the optimizer's run 25 | `klean compare`: IDENTICAL |
 | P2: `optimize` Python, holdings 20 and 25, 2 at a time | 135 s; same figures as C#; holdings=20 IDENTICAL to the run without the parameter |
+| P2: `report` on the C# and the Python top-market-cap runs (identical results) | the two reports are identical: same text and all 26 chart images byte for byte; benchmark KOSPI 200, 35 s each |
+| P2: `report --pdf` (headless Chromium) | 4 pages, one per report page; `--strategy-version`, description and parameters shown |
+| P2: `report` on an optimization run, and from the GUI's run page | report written; the GUI page opens it (403 without the token) |
+| P2: run config without LEAN's sample parameters | top-market-cap with `holdings 25`: same end equity as before (₩2,493,499,009.30) |
 | GUI (Chromium, light/dark, desktop and 420 px wide) | all pages render with no browser errors; hover values; a backtest started from the page runs, the runs list refreshes, results open; compare of C# vs Python top-market-cap: IDENTICAL; requests without the token: 403; runs outside the workspace refused |
 
 ## GUI
@@ -241,6 +287,7 @@ A local web page for the workspace (stop it with Ctrl+C):
 | Project | its runs (tick two or more → Compare), and a form to start a backtest with a name, parameters and extra LEAN config, with LEAN's output live |
 | Run | main figures, equity vs KOSPI 200 (scaled to the starting equity) with hover values, drawdown, all statistics, orders, the algorithm log or LEAN's console output, the run record (`manifest.json`) |
 | Optimization | target by parameter value (one-parameter grids; hollow dots = fails a constraint), the ranked runs (tick two or more → Compare), links to each run |
+| Report | the run page's *Make LEAN report* button runs `klean report` for that run; *Open report* shows it in a new tab |
 | Compare | equity curves overlaid and statistics side by side, differences highlighted, IDENTICAL / DIFFERENT |
 
 - It uses only Python's standard library, and the page draws its own charts, so it works offline

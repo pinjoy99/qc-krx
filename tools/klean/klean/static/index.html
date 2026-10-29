@@ -288,6 +288,9 @@ async function pageRun(ref) {
       <td class="num">${won(o.value)}</td><td>${esc(o.status)}</td><td class="muted">${esc(o.tag)}</td></tr>`).join("");
   app.innerHTML = `<div class="crumbs"><a href="#/">Workspace</a> / <a href="${href("project", project)}">${esc(project)}</a> /${optCrumb}</div>
     <h1>${esc(parts.at(-1))}</h1>
+    <div class="row" style="margin-bottom:12px"><button class="secondary" id="mkreport">${r.report ? "Remake report" : "Make LEAN report"}</button>
+      <a id="openreport" target="_blank" rel="noopener noreferrer" href="/report?${new URLSearchParams({ref: r.ref, token: TOKEN})}" style="${r.report ? "" : "display:none"}">Open report</a>
+      <span id="repstate" class="muted"></span></div>
     <div class="tiles">${tiles}</div>
     <div class="panel"><h2>Equity</h2>${legend([{label: "Strategy"}, {label: "KOSPI 200 (scaled to start equity)", color: COLORS[1]}])}<div class="chart" id="eq"></div></div>
     <div class="panel"><h2>Drawdown</h2><div class="chart" id="dd"></div></div>
@@ -306,6 +309,27 @@ async function pageRun(ref) {
   });
   document.getElementById("console").onclick = async () => {
     const c = await api("/api/log", {ref, console: 1, tail: 400}); app.querySelector('[data-p="log"] pre').textContent = c.lines.join("\n"); };
+  document.getElementById("mkreport").onclick = async () => {
+    const btn = document.getElementById("mkreport"), state = document.getElementById("repstate");
+    btn.disabled = true; state.innerHTML = '<span class="badge run">making report</span> (about 40 s; LEAN replays the orders)';
+    try {
+      const job = await api("/api/report", {}, {ref: r.ref});
+      const poll = async () => {
+        if (!document.body.contains(btn)) return;   // left the page
+        const j = await api("/api/job", {id: job.id});
+        if (j.status === "running") {
+          state.innerHTML = `<span class="badge run">making report</span> ${Math.round(Date.now() / 1000 - j.started)} s`;
+          pollTimer = setTimeout(poll, 1500); return;
+        }
+        btn.disabled = false;
+        if (j.status === "done") {
+          btn.textContent = "Remake report"; document.getElementById("openreport").style.display = "";
+          state.innerHTML = '<span class="badge ok">report ready</span>';
+        } else state.innerHTML = `<span class="badge no">failed</span> <span class="err">${esc(j.error.split("\n")[0])}</span>`;
+      };
+      poll();
+    } catch (e) { state.innerHTML = `<span class="err">${esc(e.message)}</span>`; btn.disabled = false; }
+  };
 }
 
 async function pageOptimization(project, name) {

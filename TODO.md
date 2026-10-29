@@ -62,9 +62,10 @@ Plan by phase, compared with the LEAN CLI: `docs/KLEAN-ROADMAP.md`.
 
 - ✅ P1 (everyday use): backtest options + run manifest, config, logs, compare, data status, templates, lean update.
 - ✅ P2 `optimize`: grid search, ranked results, GUI optimization page.
-- [ ] P2: `report` (LEAN Report), shared KRX-models library, `--detach`, `check-models`.
+- ✅ P2 `report`: LEAN's HTML report (and PDF), from the CLI and the GUI's run page.
+- [ ] P2: shared KRX-models library, `--detach`, `check-models`.
 - ✅ `klean gui`: local web page (workspace, runs, charts, compare, start backtests).
-- [ ] GUI later: run deletion/renaming, report export, starting an optimization from the page.
+- [ ] GUI later: run deletion/renaming, starting an optimization from the page.
 
 - [ ] Research notebooks (Jupyter with LEAN's Python environment), if needed.
 - [ ] Package the KRX models with klean (today they're copied from the clone's `examples/`).

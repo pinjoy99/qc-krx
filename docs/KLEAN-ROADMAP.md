@@ -39,7 +39,7 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 | `  --download-data`, `--data-provider-historical`, `--data-purchase-limit` | QuantConnect / vendor data | ➖ | Data comes from the qc-krx pipeline (`klean data install`) |
 | `  --image`, `--update`, `--no-update`, `--extra-docker-config`, `--addon-module` | Docker image / modules | ➖ | No Docker. Engine updates: P1 `klean lean update` |
 | `lean optimize` | parameter search via Optimizer.Launcher | ✅ `klean optimize` (P2, 2026-10-29) | Grid search; `--parameter NAME MIN MAX STEP`, `--target`, `--target-direction`, `--constraint`, `--max-concurrent-backtests`, `--estimate`. klean runs the grid itself (see P2); no Euler strategy |
-| `lean report` | HTML/PDF report from backtest results | 🔜 P2 `klean report` | Build LEAN's `Report` project once; run it on a results folder; check that won (KRW) amounts and the KOSPI 200 benchmark show correctly |
+| `lean report` | HTML/PDF report from backtest results | ✅ `klean report` (P2, 2026-10-29) | LEAN's `Report` project, built on first use; options as in the CLI; `--pdf` via wkhtmltopdf or headless Chromium; GUI button |
 | `lean research` | Jupyter with QuantBook (Docker research image) | 🔜 P3 `klean research` | Jupyter in the Python 3.11 env with LEAN's `Research/` (QuantBook) on the source build; needs investigation (kernel start-up, pythonnet) |
 | `lean logs` | show a run's log | ✅ `klean logs` (P1) | Latest (or `--backtest NAME`) `-log.txt` / `console.txt` of a project |
 | `lean build` | build custom Docker images | ➖ / ✅ P1 | No images. Equivalent: `klean lean update [--commit]` (fetch, rebuild, re-check) |
@@ -81,11 +81,17 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
   once and runs the grid as ordinary klean runs in parallel, so only grid search (no Euler).
   Tested with a 1-parameter grid (`holdings` 5–30, 6 runs) in C# and a 2-run Python grid; the
   rebalance-month parameter wasn't added. GUI: optimization page (ranked runs, target chart).
-- `report` on LEAN's `Report` project; HTML first, PDF if the tooling is available.
+- ✅ `report` (2026-10-29) on LEAN's `Report` project, built on first use; needs matplotlib 3.8.4
+  in the Python env (installed on first use). Settings go through a `config.json` in a scratch
+  working folder, because the Report program accepts only some of them on the command line.
+  PDF with wkhtmltopdf if present, else headless Chromium. Verified: C# and Python reports of the
+  identical runs are identical; KOSPI 200 benchmark shown; amounts are percentages in the charts.
 - `library add/remove`; switch templates to a shared KRX-models library (optional per project).
 - `backtest --detach`; `check-models`.
 - **Done when:** an optimization of ≥ 6 combinations finishes and its best run is identical to a
   plain backtest with the same parameters; a report opens with KRW amounts and the benchmark.
+  Status: both met for `optimize` and `report` (LEAN's report shows returns as percentages, so it
+  has no won amounts to get wrong; its one currency label, "Capacity (USD)", shows "-").
 
 ### P3 — tools
 - `research` (Jupyter + QuantBook on the source build), `--debug` (C# attach, `debugpy`),
@@ -104,8 +110,8 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 - **LEAN version drift.** Launchers' configs and DLL names change between LEAN versions. Keep the
   pinned commit as default; `klean lean update` must rerun the parity tests before switching.
 - **Python 3.11 only** (pythonnet). Watch LEAN's foundation image for the move to a newer Python.
-- **Report and Research** haven't been tried on the source build; they may need extra packages
-  (the report uses Python plotting libraries) — find out before committing to P2/P3 dates.
+- **Research** hasn't been tried on the source build yet. (The report works: it needs
+  matplotlib, which klean installs on first use.)
 - **Optimizer.Launcher** runs backtests as separate processes; Python runs are ~8× slower than C#
   (2 min 27 s vs 17 s for the top-20 strategy), so optimizations should prefer C# or limit
   concurrency by memory.
@@ -115,6 +121,7 @@ Status: ✅ in klean 0.1 · 🔜 planned (phase) · ➖ not applicable / out of 
 
 ## Suggested order
 
-P1 is done, and `optimize` from P2; next `report`, because parameter
-searches and reports are the most common next needs after single backtests. P3 on demand. P4 only
+P1 is done, and `optimize` and `report` from P2 (parameter searches and reports being the most
+common next needs after single backtests); next the rest of P2: the shared KRX-models library,
+`--detach` and `check-models`. P3 on demand. P4 only
 after the broker plugin exists.

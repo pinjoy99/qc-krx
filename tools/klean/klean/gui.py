@@ -1,5 +1,5 @@
 """`klean gui`: a local web page for the workspace: projects, runs, results charts, comparisons,
-and starting backtests. Standard library only; the page draws its charts itself (no CDN).
+optimizations, LEAN reports, and starting backtests. Standard library only; the page draws its charts itself (no CDN).
 
 Safety: listens on 127.0.0.1 only, every request needs the random token in the URL printed at
 start-up (so other web pages in the browser can't call it), and every project or run it touches
@@ -21,9 +21,14 @@ from urllib.parse import parse_qs, urlparse
 
 from klean import __version__, projects, results
 from klean.backtest import backtest, results_folder
+from klean.report import report
 from klean.workspace import KleanError, Workspace, check
 
 STATIC = Path(__file__).with_name("static")
+# LEAN's report: inline styles and data: images, plus its stylesheets, fonts and logo from CDNs; no scripts.
+REPORT_CSP = ("default-src 'none'; img-src data: https://cdn.quantconnect.com; style-src 'unsafe-inline' "
+              "https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com "
+              "https://cdnjs.cloudflare.com")
 MAX_POINTS = 1500
 ORDER_TYPES = {0: "Market", 1: "Limit", 2: "StopMarket", 3: "StopLimit", 4: "MarketOnOpen", 5: "MarketOnClose",
                6: "OptionExercise", 7: "LimitIfTouched", 8: "ComboMarket", 9: "ComboLimit", 10: "ComboLegLimit",
@@ -176,7 +181,7 @@ def api_run(ws: Workspace, q: dict) -> dict:
     return {"ref": run.relative_to(ws.root).as_posix(), "folder": str(run),
             "statistics": results.statistics(run), "runtime": full.get("runtimeStatistics", {}),
             "equity": downsample(equity), "benchmark": downsample(bench), "drawdown": downsample(drawdown),
-            "orders": orders, "manifest": manifest(run), "log": log}
+            "orders": orders, "manifest": manifest(run), "log": log, "report": (run / "report.html").exists()}
 
 
 def api_compare(ws: Workspace, q: dict) -> dict:
@@ -197,7 +202,7 @@ def api_log(ws: Workspace, q: dict) -> dict:
 
 
 class Jobs:
-    """Backtests started from the page, each in a thread (LEAN itself runs as a separate process)."""
+    """Backtests and reports started from the page, each in a thread (LEAN runs as a separate process)."""
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -226,11 +231,33 @@ class Jobs:
         threading.Thread(target=work, daemon=True).start()
         return job
 
+    def start_report(self, ws: Workspace, body: dict) -> dict:
+        run = run_ref(ws, str(body.get("ref", "")))
+        results.summary_file(run)
+        job = {"id": secrets.token_hex(4), "kind": "report", "ref": run.relative_to(ws.root).as_posix(),
+               "folder": str(run), "console_file": "report-console.txt", "status": "running", "error": "",
+               "started": time.time()}
+        with self.lock:
+            if any(j.get("kind") == "report" and j["ref"] == job["ref"] and j["status"] == "running"
+                   for j in self.jobs.values()):
+                raise KleanError("a report for this run is already being made")
+            self.jobs[job["id"]] = job
+
+        def work():
+            try:
+                report(ws, run, overwrite=True, log=lambda *a: None)
+                job["status"] = "done"
+            except Exception as e:  # noqa: BLE001 - reported to the page
+                job["status"], job["error"] = "failed", str(e)
+            job["finished"] = time.time()
+        threading.Thread(target=work, daemon=True).start()
+        return job
+
     def status(self, job_id: str) -> dict:
         job = self.jobs.get(job_id)
         if job is None:
             raise KleanError("unknown job")
-        console = Path(job["folder"]) / "console.txt"
+        console = Path(job["folder"]) / job.get("console_file", "console.txt")
         tail = console.read_text(encoding="utf-8", errors="replace").splitlines()[-40:] if console.exists() else []
         return {**job, "console": tail}
 
@@ -254,8 +281,10 @@ def make_handler(ws: Workspace, token: str, jobs: Jobs):
             given = self.headers.get("X-Klean-Token") or (q.get("token") or [""])[0]
             return secrets.compare_digest(given, token)
 
-        def _send(self, status: int, body: bytes, ctype: str) -> None:
+        def _send(self, status: int, body: bytes, ctype: str, headers: dict | None = None) -> None:
             self.send_response(status)
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
@@ -280,6 +309,11 @@ def make_handler(ws: Workspace, token: str, jobs: Jobs):
             try:
                 if url.path in gets:
                     self._json(gets[url.path](Workspace.load(ws.root), q))
+                elif url.path == "/report":
+                    page = run_ref(ws, q["ref"][0]) / "report.html"
+                    if not page.exists():
+                        raise KleanError("no report for this run yet")
+                    self._send(200, page.read_bytes(), "text/html; charset=utf-8", {"Content-Security-Policy": REPORT_CSP})
                 elif url.path == "/api/jobs":
                     self._json(jobs.all())
                 elif url.path == "/api/job":
@@ -301,6 +335,8 @@ def make_handler(ws: Workspace, token: str, jobs: Jobs):
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if url.path == "/api/backtest":
                     self._json(jobs.start(Workspace.load(ws.root), body))
+                elif url.path == "/api/report":
+                    self._json(jobs.start_report(Workspace.load(ws.root), body))
                 else:
                     self._json({"error": "not found"}, 404)
             except (KleanError, ValueError) as e:

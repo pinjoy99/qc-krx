@@ -62,6 +62,7 @@ def write_run_config(ws: Workspace, results_dir: Path, extra: dict[str, str]) ->
     if not base.exists():
         raise KleanError(f"{base} not found: is lean_root a built LEAN clone?")
     cfg = json.loads(strip_json_comments(base.read_text(encoding="utf-8")))
+    cfg["parameters"] = {}   # LEAN's sample values (ema-fast, intrinio-…); only --parameter values reach the algorithm
     for k, v in extra.items():
         cfg[k] = _value(v)
     path = results_dir / "config.json"

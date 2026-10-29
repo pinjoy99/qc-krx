@@ -9,6 +9,7 @@
     klean project-delete NAME                           delete a project and its backtests
     klean backtest NAME [--parameter K V] [--extra-config K V] [--backtest-name N] [--output DIR]
     klean optimize NAME --parameter P MIN MAX STEP [...] [--target T] [--constraint "Drawdown < 25"]
+    klean report [RUN] [--report-destination F] [--pdf]  LEAN's HTML report for a run (default: latest)
     klean logs NAME|RUN [--console] [--tail N]          a run's algorithm log (or LEAN's console output)
     klean compare RUN RUN [...] [--all]                 statistics and equity curves side by side
     klean config list | get KEY | set KEY VALUE | unset KEY
@@ -42,6 +43,9 @@ def checkout_and_build_lean(target: Path, commit: str) -> None:
     run(["git", "-C", str(target), "checkout", "-q", "FETCH_HEAD"])
     run([dotnet(), "build", str(target / "Launcher" / "QuantConnect.Lean.Launcher.csproj"), "-c", "Release",
          "-nologo", "-v", "q"])
+    if (target / "Report" / "bin" / "Release" / "QuantConnect.Report.dll").exists():   # built by `klean report`
+        run([dotnet(), "build", str(target / "Report" / "QuantConnect.Report.csproj"), "-c", "Release",
+             "-nologo", "-v", "q"])
 
 
 def cmd_install_lean(args) -> None:
@@ -183,6 +187,25 @@ def cmd_optimize(args) -> int:
         print(f"best ({s['direction']} {s['target']}): {Path(s['folder']) / s['best']}")
     else:
         print("no run met the constraints")
+    return 0
+
+
+def cmd_report(args) -> int:
+    from klean.report import report
+    ws = Workspace.load(Path.cwd())
+    if args.run:
+        run_dir = results.resolve_run(ws, args.run)
+    else:
+        found = sorted((r for p in ws.root.iterdir() if p.is_dir() for r in results.runs(p)),
+                       key=lambda r: r.name)
+        if not found:
+            raise KleanError("no backtests in this workspace yet")
+        run_dir = found[-1]
+    r = report(ws, run_dir, destination=Path(args.report_destination) if args.report_destination else None,
+               strategy_name=args.strategy_name or "", strategy_version=args.strategy_version or "",
+               strategy_description=args.strategy_description, overwrite=args.overwrite,
+               css=Path(args.css) if args.css else None, html=Path(args.html) if args.html else None, pdf=args.pdf)
+    print(f"report: {r['report']}" + (f"\npdf:    {r['pdf']}" if "pdf" in r else ""))
     return 0
 
 
@@ -375,6 +398,18 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--name", help="name for the optimization (folder suffix)")
     s.add_argument("--build-config", choices=["Release", "Debug"], default="Release")
     s.set_defaults(func=cmd_optimize)
+
+    s = sub.add_parser("report", help="LEAN's HTML report for a run (default: the workspace's latest run)")
+    s.add_argument("run", nargs="?", help="project (its latest run), PROJECT/RUN or a results folder")
+    s.add_argument("--report-destination", help="default: <run>/report.html")
+    s.add_argument("--strategy-name", help="default: the project name")
+    s.add_argument("--strategy-version")
+    s.add_argument("--strategy-description", help="default: algorithm, parameters, run, data date, LEAN commit")
+    s.add_argument("--overwrite", action="store_true", help="replace an existing report")
+    s.add_argument("--css", help="CSS file overriding the report's styles")
+    s.add_argument("--html", help="custom HTML template (LEAN's Report/template.html format)")
+    s.add_argument("--pdf", action="store_true", help="also write a PDF (wkhtmltopdf or Chromium on the PATH)")
+    s.set_defaults(func=cmd_report)
 
     s = sub.add_parser("logs", help="show a run's algorithm log (default: the project's latest run)")
     s.add_argument("run", help="project, PROJECT/RUN (name or prefix) or a results folder")

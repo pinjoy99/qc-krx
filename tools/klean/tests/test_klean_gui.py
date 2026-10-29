@@ -104,6 +104,15 @@ class GuiTest(unittest.TestCase):
         self.assertEqual(r["statistics"]["Sharpe Ratio"], "0.3")
         self.assertEqual(self.get("/api/optimization?project=A&name=..")[0], 400)
 
+    def test_report_page(self):
+        run = self.root / "A" / "backtests" / "2026-10-28_11-00-00"
+        ref = urllib.request.quote("A/backtests/2026-10-28_11-00-00")
+        self.assertEqual(self.get("/report?ref=" + ref)[0], 400)            # not made yet
+        (run / "report.html").write_text("<html>report</html>")
+        status, body = self.get("/report?ref=" + ref)
+        self.assertEqual((status, body), (200, b"<html>report</html>"))
+        self.assertTrue(json.loads(self.get("/api/run?ref=" + ref)[1])["report"])
+
     def test_downsample(self):
         pts = [[i, i] for i in range(10000)]
         out = gui.downsample(pts, 100)
