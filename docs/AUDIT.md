@@ -231,6 +231,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `fbc5fc1` | 2026-10-20 | klean made strictly optional: moved to `tools/klean` with its own `pyproject.toml` and tests; the main package installs only `qc-krx`; BEGINNER Stage 4 back to plain commands (re-run on a fresh LEAN build) |
 | `14cbbfe` | 2026-10-28 | klean P1 (optional tool): backtest options and run manifest, config, logs, compare, data status, project templates/delete, lean status/update |
 | `471fff9` | 2026-10-28 | `klean gui` (optional tool): local web page, standard library only, token-protected, checked in Chromium |
+| `323e4b7` | 2026-10-29 | `klean optimize` (optional tool, P2): grid search, ranked results, GUI optimization page. Checked: C# 6-run grid (best holdings=25 IDENTICAL to a plain backtest with that parameter), Python grid matches C# |
 
 ## 8. Security note
 
