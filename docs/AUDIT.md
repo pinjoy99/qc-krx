@@ -232,6 +232,7 @@ index data that benchmark was empty (first run: alpha 0, beta 0, tracking error 
 | `14cbbfe` | 2026-10-28 | klean P1 (optional tool): backtest options and run manifest, config, logs, compare, data status, project templates/delete, lean status/update |
 | `471fff9` | 2026-10-28 | `klean gui` (optional tool): local web page, standard library only, token-protected, checked in Chromium |
 | `323e4b7` | 2026-10-29 | `klean optimize` (optional tool, P2): grid search, ranked results, GUI optimization page. Checked: C# 6-run grid (best holdings=25 IDENTICAL to a plain backtest with that parameter), Python grid matches C# |
+| `6ff23ba` | 2026-10-29 | `klean report` (optional tool, P2): LEAN's report (HTML, PDF), GUI button. Checked: C# and Python reports of identical runs identical (text and all 26 charts); PDF 4 pages |
 
 ## 8. Security note
 
